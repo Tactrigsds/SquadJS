@@ -24,6 +24,7 @@ export default class SquadServer extends EventEmitter {
     this.id = options.id;
     this.options = options;
 
+    this.matchHistory = []
     this.layerHistory = [];
     this.layerHistoryMaxLength = options.layerHistoryMaxLength || 20;
 
@@ -208,6 +209,10 @@ export default class SquadServer extends EventEmitter {
       this.emit('NEW_GAME', data);
     });
 
+    this.logParser.on("MAP_SET", async (data) => {
+      this.emit("MAP_SET", data);
+    })
+
     this.logParser.on('PLAYER_CONNECTED', async (data) => {
       Logger.verbose(
         'SquadServer',
@@ -316,6 +321,10 @@ export default class SquadServer extends EventEmitter {
     });
 
     this.logParser.on('ROUND_ENDED', async (data) => {
+      // Makes sure the tickethistory does not exceed it's max allowed length
+      this.matchHistory.unshift({winner: data.winner, loser: data.loser, time: data.time})
+      this.matchHistory = this.matchHistory.slice(0, this.layerHistoryMaxLength);
+      await this.updateAdmins();
       this.emit('ROUND_ENDED', data);
     });
 
@@ -666,5 +675,29 @@ export default class SquadServer extends EventEmitter {
 
   getMatchStartTimeByPlaytime(playtime) {
     return new Date(Date.now() - +playtime * 1000);
+  }
+
+  async constructPartialLayer() {
+    Logger.verbose('SquadServer', 1, `Constructing Partial Layer...`);
+    try {
+      const rconData = await this.rcon.getCurrentMap();
+      const gamedigData = await Gamedig.query({
+        type: 'squad',
+        host: this.options.host,
+        port: this.options.queryPort
+      });
+
+      const layer = {
+        name: rconData.layer, // "Al Basrah AAS V1"
+        layerid: gamedigData.map, // "Al_Basrah_AAS_V1"
+        map: {
+          name: rconData.level // "Al Basrah"
+        },
+        gamemode: gamedigData.raw.rules.GameMode_s // "AAS"
+      };
+      return layer;
+    } catch (err) {
+      Logger.verbose('SquadServer', 1, `Failed to Construct Partial Layer`, err);
+    }
   }
 }

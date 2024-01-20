@@ -119,9 +119,18 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
   async updateStatus() {
     if (!this.options.setBotStatus) return;
 
+    // Custom fix for if layers aren't loaded properly
+    if (this.server.currentLayer === null) {
+      this.server.currentLayer = await this.server.rcon.getCurrentMap();
+    }
+
+    if (this.server.nextLayer === null) {
+      this.server.nextLayer = await this.server.rcon.getNextMap();
+    }
+
     await this.options.discordClient.user.setActivity(
       `(${this.server.a2sPlayerCount}/${this.server.publicSlots}) ${
-        this.server.currentLayer?.name || 'Unknown'
+        this.server.currentLayer?.name || this.server.currentLayer.layer
       }`,
       { type: 'WATCHING' }
     );
