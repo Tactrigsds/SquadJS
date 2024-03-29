@@ -498,6 +498,7 @@ export default class DBLog extends BasePlugin {
     this.server.on('PLAYER_WOUNDED', this.onPlayerWounded);
     this.server.on('PLAYER_DIED', this.onPlayerDied);
     this.server.on('PLAYER_REVIVED', this.onPlayerRevived);
+    this.server.on('ROUND_ENDED', this.roundEnded)
   }
 
   async unmount() {
@@ -508,6 +509,7 @@ export default class DBLog extends BasePlugin {
     this.server.removeEventListener('PLAYER_WOUNDED', this.onPlayerWounded);
     this.server.removeEventListener('PLAYER_DIED', this.onPlayerDied);
     this.server.removeEventListener('PLAYER_REVIVED', this.onPlayerRevived);
+    this.server.removeEventListener('ROUND_ENDED', this.roundEnded);
   }
 
   async onTickRate(info) {
