@@ -83,9 +83,27 @@ export default class DBLog extends BasePlugin {
       endTime: {
         type: DataTypes.DATE
       },
+      tickets: {
+        type: DataTypes.INTEGER
+      },
       winner: {
         type: DataTypes.STRING
-      }
+      },
+      team1: {
+          type: DataTypes.STRING
+      },
+      team2: {
+          type: DataTypes.STRING
+      },
+      winnerTeam: {
+          type: DataTypes.STRING
+      },
+      winnerTeamID: {
+          type: DataTypes.INTEGER
+      },
+      isDraw: {
+          type: DataTypes.BOOLEAN
+      },
     });
 
     this.createModel('TickRate', {
@@ -441,6 +459,7 @@ export default class DBLog extends BasePlugin {
     this.onPlayerWounded = this.onPlayerWounded.bind(this);
     this.onPlayerDied = this.onPlayerDied.bind(this);
     this.onPlayerRevived = this.onPlayerRevived.bind(this);
+    this.roundEnded = this.roundEnded.bind(this);
     this.migrateSteamUsersIntoPlayers = this.migrateSteamUsersIntoPlayers.bind(this);
     this.dropAllForeignKeys = this.dropAllForeignKeys.bind(this);
   }
@@ -482,6 +501,7 @@ export default class DBLog extends BasePlugin {
     this.server.on('PLAYER_WOUNDED', this.onPlayerWounded);
     this.server.on('PLAYER_DIED', this.onPlayerDied);
     this.server.on('PLAYER_REVIVED', this.onPlayerRevived);
+    this.server.on('ROUND_ENDED', this.roundEnded)
   }
 
   async unmount() {
@@ -492,6 +512,7 @@ export default class DBLog extends BasePlugin {
     this.server.removeEventListener('PLAYER_WOUNDED', this.onPlayerWounded);
     this.server.removeEventListener('PLAYER_DIED', this.onPlayerDied);
     this.server.removeEventListener('PLAYER_REVIVED', this.onPlayerRevived);
+    this.server.removeEventListener('ROUND_ENDED', this.roundEnded);
   }
 
   async onTickRate(info) {
@@ -685,6 +706,21 @@ export default class DBLog extends BasePlugin {
         conflictFields: ['steamID']
       }
     );
+  }
+
+  async roundEnded(info) {
+      let isDraw = (!info.winner || !info.loser)
+      await this.models.Match.update(
+          {
+              winnerTeam: info.winner?.faction,
+              winnerTeamID: +info.winner?.team,
+              team1: +info.winner?.team == 1 ? info.winner.faction : info.loser?.faction,
+              team2: +info.winner?.team == 2 ? info.winner.faction : info.loser?.faction,
+              tickets: +(+info.winner?.tickets - +info.loser?.tickets),
+              isDraw: isDraw
+          },
+          { where: { server: this.options.overrideServerID || this.server.id, endTime: null } }
+      );
   }
 
   async migrateSteamUsersIntoPlayers() {
