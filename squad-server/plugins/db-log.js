@@ -83,6 +83,9 @@ export default class DBLog extends BasePlugin {
       endTime: {
         type: DataTypes.DATE
       },
+      tickets: {
+        type: DataTypes.INTEGER
+      },
       winner: {
         type: DataTypes.STRING
       },
