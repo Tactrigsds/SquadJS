@@ -85,7 +85,22 @@ export default class DBLog extends BasePlugin {
       },
       winner: {
         type: DataTypes.STRING
-      }
+      },
+      team1: {
+          type: DataTypes.STRING
+      },
+      team2: {
+          type: DataTypes.STRING
+      },
+      winnerTeam: {
+          type: DataTypes.STRING
+      },
+      winnerTeamID: {
+          type: DataTypes.INTEGER
+      },
+      isDraw: {
+          type: DataTypes.BOOLEAN
+      },
     });
 
     this.createModel('TickRate', {
