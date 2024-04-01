@@ -54,32 +54,22 @@ export default class DiscordChat extends DiscordBasePlugin {
   async onChatMessage(info) {
     if (this.options.ignoreChats.includes(info.chat)) return;
 
-    await this.sendDiscordMessage({
-      embed: {
-        title: info.chat,
-        color: this.options.chatColors[info.chat] || this.options.color,
-        fields: [
-          {
-            name: 'Player',
-            value: info.player.name,
-            inline: true
-          },
-          {
-            name: 'SteamID',
-            value: `[${info.player.steamID}](https://steamcommunity.com/profiles/${info.steamID})`,
-            inline: true
-          },
-          {
-            name: 'Team & Squad',
-            value: `Team: ${info.player.teamID}, Squad: ${info.player.squadID || 'Unassigned'}`
-          },
-          {
-            name: 'Message',
-            value: `${info.message}`
-          }
-        ],
-        timestamp: info.time.toISOString()
-      }
-    });
+    let color = '';
+    switch (info.chat) {
+      case 'ChatAll':
+      case 'ChatTeam':
+        color = 'md';
+        break;
+
+      case 'ChatAdmin':
+        color = 'yaml';
+        break;
+    }
+    const message = {
+      content: `\`\`\`${color}\n# T:${info.player.teamID} SQ:${
+        info.player.squadID || 'Unassigned'
+      } ${info.player.name}\n${info.chat}: ${info.message}\n\`\`\``
+    };
+    await this.sendDiscordMessage(message);
   }
 }
