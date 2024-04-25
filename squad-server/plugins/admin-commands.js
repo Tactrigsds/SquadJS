@@ -91,7 +91,7 @@ export default class AdminCommands extends DiscordBasePlugin {
       for (const p of this.server.players) {
         const playerName = p.name.toLowerCase().replace(/\s/g, '');
         if (playerName.includes(target.toLowerCase())) {
-          matched.push({ name: p.name, steamID: p.steamID });
+          matched.push({name: p.name, steamID: p.steamID});
         }
       }
 
@@ -198,7 +198,6 @@ export default class AdminCommands extends DiscordBasePlugin {
         }
       }
     }
-
 
     if (timeRequired) {
       if (messageArray[2] === undefined || !messageArray[2].match(/^[0-9]+/)) {
@@ -365,17 +364,17 @@ export default class AdminCommands extends DiscordBasePlugin {
           this.server.rcon.warn(matched.steamID, `You have been swapped to the other team by an admin because of ${reason}`)
           this.server.rcon.warn(playerInfo.steamID, `Swapped ${matched.name} to the other team beacuse of ${reason}`)
           channel.send(
-              `Admin ${playerInfo.name} swapped ${matched.name} to the other team.`
+            `Admin ${playerInfo.name} swapped ${matched.name} to the other team.`
           )
         } else {
           await this.server.rcon.execute(`AdminForceTeamChange ${matched.steamID}`)
           this.server.rcon.warn(matched.steamID, "You have been swapped to the other team by an admin")
           this.server.rcon.warn(playerInfo.steamID, `Swapped ${matched.name} to the other team`)
           channel.send(
-              `Admin ${playerInfo.name} swapped ${matched.name} to the other team.`
+            `Admin ${playerInfo.name} swapped ${matched.name} to the other team.`
           )
         }
-      break;
+        break;
 
       case '!switchnext':
         if (this.server.switchList.includes(matched.steamID)) {
@@ -388,7 +387,7 @@ export default class AdminCommands extends DiscordBasePlugin {
           this.server.rcon.warn(
             matched.steamID,
             'You have been marked for teamswitching on mapchange. ' +
-              'Thank you for helping with team balance and contact admins if you have issues.'
+            'Thank you for helping with team balance and contact admins if you have issues.'
           );
           this.server.rcon.warn(
             playerInfo.steamID,
@@ -450,51 +449,63 @@ export default class AdminCommands extends DiscordBasePlugin {
         break;
 
       case '!maps':
-        this.server.rcon.warn(playerInfo.steamID, `The last 5 maps were:`);
-        this.listLastPlayedMaps(playerInfo);
-        setTimeout(async () => {
-          this.listLastPlayedMaps(playerInfo);
-        }, 6500);
+        this.listLastPlayedMaps(playerInfo)
         break;
 
       case '!tickets':
-        this.server.rcon.warn(playerInfo.steamID, `The ticket count of the last 5 rounds were:`);
-        setTimeout(async () => {
-          this.listLastRoundsTicketCounts(playerInfo)
-        }, 4000);
-        break;
-
+        this.listLastRoundsTicketCounts(playerInfo)
+        break
       default:
     }
   }
 
   async listLastRoundsTicketCounts(playerInfo) {
-    for (let i = 0; i < 5; ++i) {
-      if (i === this.server.matchHistory.length) {
-        break;
+    const matchHistory = this.server.matchHistory
+    let warns = []
+    let message = `The ticket count of the last 5 rounds were: \n\n`
+    for (let i = 0; i < matchHistory.length && i < 5; i += 1) {
+      let data = this.server.matchHistory[i]
+      message += `${i+1}. `
+      if (!data.winner || !data.loser) {
+        message += 'Draw \n\n'
+      } else {
+        message += `Layer: ${data.winner.layer} - Team ${data.winner.team}: ${data.winner.faction} won with final ticket count: ${data.winner.tickets}-${data.loser.tickets} tickets\n\n`
       }
-      setTimeout(async () => {
-        const data = this.server.matchHistory[i]
+      if (i % 2 == 0) {
+        warns.push(message)
+        message = "\n\n"
+      }
+    }
 
-        // We need to check if there is a winner or a loser, otherwise the data arrives with different fields.
-        if (!data.winner || !data.loser) {
-          this.server.rcon.warn(playerInfo.steamID, "Draw")
-        } else {
-            const message = `Layer: ${data.winner.layer} - Team ${data.winner.team}: ${data.winner.faction} won with final ticket count: ${data.winner.tickets}-${data.loser.tickets} tickets`
-            this.server.rcon.warn(playerInfo.steamID, `${message}`);
-        }
-      }, 300);
+    warns.push(message)
+    for (let i = 0; i < 3; i++) {
+      for (const warnMessage of warns) {
+        await this.server.rcon.warn(playerInfo.steamID, warnMessage)
+      }
+      await new Promise(resolve => setTimeout(resolve, this.server.warnPersistenceTimeSeconds)); // Wait for 3 seconds
     }
   }
 
   async listLastPlayedMaps(playerInfo) {
-    for (let i = 0; i < 5; ++i) {
-      if (i === this.server.layerHistory.length) {
-        break;
+    const layerHistory = this.server.layerHistory
+    let warns = []
+    let message = `The last 5 maps were: \n\n`
+    for (let i = 0; i < layerHistory.length && i < 5; i += 1) {
+      message += `${i+1}. ` + layerHistory[i].layer.name
+      message += "\n\n"
+
+      if (i % 2 === 0) {
+        warns.push(message)
+        message = "\n\n"
       }
-      setTimeout(async () => {
-        await this.server.rcon.warn(playerInfo.steamID, `${this.server.layerHistory[i].layer.name}`);
-      }, 300);
+    }
+    warns.push(message)
+
+    for (let i = 0; i < 3; i++) {
+      for (const warnMessage of warns) {
+        await this.server.rcon.warn(playerInfo.steamID, warnMessage)
+      }
+      await new Promise(resolve => setTimeout(resolve, this.server.warnPersistenceTimeSeconds)); // Wait for 3 seconds
     }
   }
 

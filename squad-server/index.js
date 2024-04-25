@@ -23,7 +23,8 @@ export default class SquadServer extends EventEmitter {
 
     this.id = options.id;
     this.options = options;
-
+    this.warnMessageCharLimit = 215
+    this.warnPersistenceTimeSeconds = 6300
     this.matchHistory = []
     this.layerHistory = [];
     this.layerHistoryMaxLength = options.layerHistoryMaxLength || 20;
@@ -698,6 +699,24 @@ export default class SquadServer extends EventEmitter {
       return layer;
     } catch (err) {
       Logger.verbose('SquadServer', 1, `Failed to Construct Partial Layer`, err);
+    }
+  }
+
+  async warnAllAdmins(message) {
+    // Gets the list of all admins with permissions to see adminchat on the server, checks which ones are online,
+    // And then warns once next layer has been set.
+    const onlineAdminListWithPerms = this.server.getAdminsWithPermission('canseeadminchat');
+    const adminNotifyList = [];
+    for (const player of this.server.players) {
+      if (onlineAdminListWithPerms.includes(player.steamID)) {
+        adminNotifyList.push(player.steamID);
+      }
+    }
+    // Iterate through new array to notify all online admins
+    for (const admin of adminNotifyList) {
+      await this.server.rcon.warn(
+          admin, message
+      );
     }
   }
 }
