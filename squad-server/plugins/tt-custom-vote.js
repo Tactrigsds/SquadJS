@@ -16,12 +16,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
   static get optionsSpecification() {
     return {
       ...DiscordBasePlugin.optionsSpecification,
-      // channelID: {
-      //   required: true,
-      //   description: 'The ID of the channel that layer changes will be broadcast to',
-      //   default: '',
-      //   example: '667741905228136459'
-      // },
+      channelID: {
+        required: true,
+        description: 'The ID of the channel that layer changes will be broadcast to',
+        default: '',
+        example: '667741905228136459'
+      },
       sameMapLimit: {
         required: false,
         description: "The amount of games needed before a map will be pulled again.",
@@ -118,17 +118,14 @@ export default class TTCustomVote extends DiscordBasePlugin {
       }
 
       let playerInfo = await this.server.getPlayerBySteamID(info.steamID)
-
       let splitMessage = info.message.toLowerCase().split(" ")
-      console.log(splitMessage)
       let message = info.message.toLowerCase()
-      console.log(this.options.setNextFromPoolCommand)
 
       if (info.message.toLowerCase() === this.options.generatePoolCommand) {
           this.verbose(2, 'The admin triggering the generation: ' + playerInfo.name)
           this.server.generateCuratedPool = await this.generateCuratedPool(playerInfo)
           await this.server.rcon.warn(playerInfo.steamID, 'Map pool generated. Displaying new pool:')
-          await new Promise(resolve => setTimeout(resolve, 3000))
+          await new Promise(resolve => setTimeout(resolve, 6000))
           await this.sendCuratedPool(playerInfo)
 
       } else if (message === this.options.startVoteCommand) {
@@ -137,27 +134,28 @@ export default class TTCustomVote extends DiscordBasePlugin {
           await this.sendCuratedPool(playerInfo)
 
       } else if (message.startsWith(this.options.setNextFromPoolCommand)) {
-        console.log('Start vote command triggered')
+        console.log('Set next command triggered')
         if (!(splitMessage.length === 2)) {
           this.server.rcon.warn(playerInfo.steamID, 'Invalid amount of parameters to the setnext command.\n' + "The second parameter must be a number corresponding to one of the map pool options.")
 
         } else if (this.server.curatedLayerPool === null || this.server.curatedLayerPool.length < 1) {
           this.server.rcon.warn(playerInfo.steamID, 'The map pool is currently empty. Regenerate it before attempting to set a map from the pool.')
 
-        } else if (!(!isNaN(splitMessage[1]) || Number(splitMessage[1]) > this.server.curatedLayerPool.length)) {
-          this.server.rcon.warn(playerInfo.steamID, 'Invalid type of parameter\n')
+        } else if (!(!isNaN(splitMessage[1]))) {
+          this.server.rcon.warn(playerInfo.steamID, 'Invalid type of parameter, must be a number\n')
+
+        } else if (Number(splitMessage[1]) > this.server.curatedLayerPool.length) {
+          this.server.rcon.warn(playerInfo.steamID, 'The given number must be within bounds of the generated map pool, bounds are currently: ' + "1-" + this.server.curatedLayerPool.length - 1)
 
         } else {
           const selectedChoice = Number(splitMessage[1]) - 1
           const selectedLayer = this.server.curatedLayerPool[selectedChoice]
           const message = `Setting next map to: ${selectedLayer[0]}_${selectedLayer[1]} - ${selectedLayer[2]}_${selectedLayer[3]} vs ${selectedLayer[4]}_${selectedLayer[5]}`
           this.server.rcon.warn(playerInfo.steamID, message)
-          console.log(selectedLayer)
-          const mapCommand = ''
-          // this.server.rcon.execute('')
-
+          const mapCommand = this.assembleRCONSetNextCommandFromCSVElement(selectedLayer)
+          // TODO add a check to see if the selected map is valid.
+          this.server.rcon.execute(`AdminSetNextLayer ${mapCommand}`)
         }
-
       }
 
 
@@ -185,8 +183,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
 
 
-    assembleRCONSetNextFromCSV(csv) {
-      return `${csv[0]}`
+    assembleRCONSetNextCommandFromCSVElement(csv) {
+      // indexes corresponding to (map)_(layer_version) (faction1)+(subfaction) (faction2)+(subfaction)
+      return `${csv[0]}_${csv[1]} ${csv[2]}+${csv[3]} ${csv[4]}+${csv[5]}`
     }
     async sendCuratedPool(playerInfo) {
       if (!this.server.curatedLayerList) {
