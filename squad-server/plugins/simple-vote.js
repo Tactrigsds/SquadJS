@@ -93,6 +93,10 @@ export default class SimpleVote extends DiscordBasePlugin {
         description: 'Map Prefixes from Mods or DLC, used to filter out base maps',
         default: ['CAF_'],
         example: ['CAF_', 'BAL_', 'GC_', 'HLP_', 'HRR_']
+      },
+      deprecatedDescription: {
+        required: false,
+        description: "This field exists for the sole purpose of warning any potential users that this plugin is deprecated but the config should be kept and the plugin re-enabled in case the new voting plugin breaks"
       }
     };
   }
@@ -147,7 +151,6 @@ export default class SimpleVote extends DiscordBasePlugin {
       );
       return;
     }
-
     // START A VOTE
     if (
       !this.voteInProgress &&
@@ -160,7 +163,6 @@ export default class SimpleVote extends DiscordBasePlugin {
         await this.server.rcon.warn(info.steamID, 'Please input at least two vote options.');
         return;
       }
-
       this.callVote(this.voteOptions);
     }
 
@@ -276,6 +278,7 @@ export default class SimpleVote extends DiscordBasePlugin {
       if (totals[i] > max) {
         tie = false;
         winner = this.voteOptions[i];
+
         max = totals[i];
       }
     }

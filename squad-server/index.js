@@ -24,7 +24,8 @@ export default class SquadServer extends EventEmitter {
     this.id = options.id;
     this.options = options;
     this.warnMessageCharLimit = 215
-    this.warnPersistenceTimeSeconds = 6300
+    this.warnMessagePersistenceTimeSeconds = 6100
+    this.serverBroadcastCharLimit = 200
     this.matchHistory = []
     this.layerHistory = [];
     this.layerHistoryMaxLength = options.layerHistoryMaxLength || 20;
@@ -705,18 +706,16 @@ export default class SquadServer extends EventEmitter {
   async warnAllAdmins(message) {
     // Gets the list of all admins with permissions to see adminchat on the server, checks which ones are online,
     // And then warns once next layer has been set.
-    const onlineAdminListWithPerms = this.server.getAdminsWithPermission('canseeadminchat');
+    const onlineAdminListWithPerms = this.getAdminsWithPermission('canseeadminchat');
     const adminNotifyList = [];
-    for (const player of this.server.players) {
+    for (const player of this.players) {
       if (onlineAdminListWithPerms.includes(player.steamID)) {
         adminNotifyList.push(player.steamID);
       }
     }
     // Iterate through new array to notify all online admins
     for (const admin of adminNotifyList) {
-      await this.server.rcon.warn(
-          admin, message
-      );
+      await this.rcon.warn(admin, message);
     }
   }
 }
