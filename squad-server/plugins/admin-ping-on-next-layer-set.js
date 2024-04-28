@@ -1,6 +1,6 @@
-import DiscordBasePlugin from "./discord-base-plugin.js";
+import BasePlugin from './base-plugin.js';
 
-export default class NextLayerSet extends DiscordBasePlugin {
+export default class NextLayerSet extends BasePlugin {
   static get description() {
     return (
         'Plugin intended to warn admins playing on the server if someone has changed the next map.' +
@@ -13,19 +13,7 @@ export default class NextLayerSet extends DiscordBasePlugin {
   }
 
   static get optionsSpecification() {
-    return {
-      ...DiscordBasePlugin.optionsSpecification,
-      channelID: {
-        required: true,
-        description: 'The ID of the channel that layer changes will be broadcast to',
-        default: '',
-        example: '667741905228136459'
-      },
-      warnMessage: {
-        required: false,
-        default: ''
-      }
-    };
+    return {};
   }
 
   constructor(server, options, connectors) {
@@ -44,21 +32,8 @@ export default class NextLayerSet extends DiscordBasePlugin {
 
 
   async onSetMap(info) {
-    // Gets the list of all admins with permissions to see adminchat on the server, checks which ones are online,
-    // And then warns once next layer has been set.
-    const onlineAdminListWithPerms = this.server.getAdminsWithPermission('canseeadminchat');
-    const adminNotifyList = [];
-    for (const player of this.server.players) {
-      if (onlineAdminListWithPerms.includes(player.steamID)) {
-        adminNotifyList.push(player.steamID);
-      }
-    }
-    // Iterate through new array to notify all online admins
-    for (const admin of adminNotifyList) {
-      await this.server.rcon.warn(
-          admin, `The next layer has been set to: ${info.nextLayer}`
-      );
-    }
-
+    this.verbose(1, 'Next map set detected.')
+    await this.server.warnAllAdmins(`The next layer has been set to: ${info.nextLayer}`)
+    // console.log(info)
   }
 }

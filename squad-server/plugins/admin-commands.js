@@ -91,7 +91,7 @@ export default class AdminCommands extends DiscordBasePlugin {
       for (const p of this.server.players) {
         const playerName = p.name.toLowerCase().replace(/\s/g, '');
         if (playerName.includes(target.toLowerCase())) {
-          matched.push({name: p.name, steamID: p.steamID});
+          matched.push({ name: p.name, steamID: p.steamID });
         }
       }
 
@@ -449,48 +449,53 @@ export default class AdminCommands extends DiscordBasePlugin {
         break;
 
       case '!maps':
-        this.listLastPlayedMaps(playerInfo)
+        await this.listLastPlayedMaps(playerInfo)
         break;
 
       case '!tickets':
-        this.listLastRoundsTicketCounts(playerInfo)
+        await this.listLastRoundsTicketCounts(playerInfo)
         break
       default:
     }
   }
 
   async listLastRoundsTicketCounts(playerInfo) {
-    const matchHistory = this.server.matchHistory
+    let matchHistory = this.server.matchHistory
     let warns = []
     let message = `The ticket count of the last 5 rounds were: \n\n`
-    for (let i = 0; i < matchHistory.length && i < 5; i += 1) {
-      let data = this.server.matchHistory[i]
+
+    for (let i = 0; i < matchHistory.length && i < 5; ++i) {
+      let data = matchHistory[i]
       message += `${i+1}. `
+
+      // If the game is a draw, there is no winner or loser data that can be parsed.
       if (!data.winner || !data.loser) {
         message += 'Draw \n\n'
       } else {
-        message += `Layer: ${data.winner.layer} - Team ${data.winner.team}: ${data.winner.faction} won with final ticket count: ${data.winner.tickets}-${data.loser.tickets} tickets\n\n`
+        // message += `Layer: ${data.winner.layer} - Team ${data.winner.team}: ${data.winner.faction} won:\n ${data.winner.tickets}-${data.loser.tickets} tickets\n\n`
+        message += `Layer: ${data.winner.layer} - Team ${data.winner.team}: ${data.winner.faction} won by ${data.winner.tickets - data.loser.tickets}} tickets\n\n`
       }
-      if (i % 2 == 0) {
+      if (i % 2 === 0) {
         warns.push(message)
         message = "\n\n"
       }
     }
 
     warns.push(message)
+
     for (let i = 0; i < 3; i++) {
       for (const warnMessage of warns) {
         await this.server.rcon.warn(playerInfo.steamID, warnMessage)
       }
-      await new Promise(resolve => setTimeout(resolve, this.server.warnPersistenceTimeSeconds)); // Wait for 3 seconds
+      await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeSeconds));
     }
   }
 
   async listLastPlayedMaps(playerInfo) {
-    const layerHistory = this.server.layerHistory
+    let layerHistory = this.server.layerHistory
     let warns = []
     let message = `The last 5 maps were: \n\n`
-    for (let i = 0; i < layerHistory.length && i < 5; i += 1) {
+    for (let i = 0; i < layerHistory.length && i < 5; ++i) {
       message += `${i+1}. ` + layerHistory[i].layer.name
       message += "\n\n"
 
@@ -499,13 +504,14 @@ export default class AdminCommands extends DiscordBasePlugin {
         message = "\n\n"
       }
     }
+
     warns.push(message)
 
     for (let i = 0; i < 3; i++) {
       for (const warnMessage of warns) {
         await this.server.rcon.warn(playerInfo.steamID, warnMessage)
       }
-      await new Promise(resolve => setTimeout(resolve, this.server.warnPersistenceTimeSeconds)); // Wait for 3 seconds
+      await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeSeconds));
     }
   }
 
