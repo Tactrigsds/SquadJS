@@ -4,7 +4,7 @@ export default class DiscordAdminRequest extends DiscordBasePlugin {
   static get description() {
     return (
       'The <code>DiscordAdminRequest</code> plugin will ping admins in a Discord channel when a player requests ' +
-      'an  via the <code>!admin</code> command in in-game chat.'
+      'an admin via the <code>!admin</code> command in in-game chat.'
     );
   }
 
