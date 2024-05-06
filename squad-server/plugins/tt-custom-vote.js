@@ -1,7 +1,6 @@
 import DiscordBasePlugin from "./discord-base-plugin.js";
 
 import fs from 'fs'
-import csv from 'csv-parser'
 
 export default class TTCustomVote extends DiscordBasePlugin {
   static get description() {
@@ -110,9 +109,10 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.ballotBox = new Map();
       this.voteOptions = [];
       this.mapVoteWinner = null;
-      this.curatedMapVoteTriggered = false;
+      this.mapVoteRunning = false;
       this.poolGenerationTime = null;
       this.mapPoolSize = 3;
+      this.genPoolLastCalledTime = new Date()
     }
 
     // We want to reset the vote/and selected layers if the map rolls.
@@ -126,7 +126,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
       // console.log(this.server.curatedLayerPool)
     }
     async unmount(){
-
+      this.server.removeEventListener(this.onChatMessage)
+      this.server.removeEventListener(this.onNewGame)
     }
 
 
@@ -222,7 +223,24 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
       // Run admin commands
       if (!this.options.ignoreChats.includes(info.chat)) {
+
         if (info.message.toLowerCase() === this.options.generatePoolCommand) {
+          if (this.mapVoteRunning) {
+            await this.server.rcon.warn(playerInfo.steamID, 'Cannot generate a new pool while a mapvote is running.')
+            return;
+          }
+
+          const currentTime = new Date()
+          const timeSinceLastCall = currentTime - this.genPoolLastCalledTime
+
+          if (timeSinceLastCall <= this.options.generatePoolFrequencyLimitSeconds * 1000) {
+            await this.server.rcon.warn(playerInfo.steamID, `Pool was regenerated too recently. Please wait ${Math.abs(Math.round((10000 - timeSinceLastCall) / 1000))} seconds before calling it again`)
+            return
+          }
+
+          this.genPoolLastCalledTime = currentTime
+
+          this.server.curatedLayerPool = await this.generateCuratedPool(playerInfo)
           this.verbose(2, 'The admin triggering the generation: ' + playerInfo.name)
           this.server.generateCuratedPool = await this.generateCuratedPool(playerInfo)
           await this.server.rcon.warn(playerInfo.steamID, 'Map pool generated. Displaying new pool:')
@@ -230,6 +248,13 @@ export default class TTCustomVote extends DiscordBasePlugin {
           await this.sendCuratedPool(playerInfo)
 
       } else if (message === this.options.startVoteCommand || message === '!rtv') {
+          if (this.mapVoteRunning) {
+            await this.server.rcon.warn(playerInfo.steamID, 'Mapvote already running. End the old one before starting a new one.')
+            return
+          }
+
+
+
           // const subfactionMap = new Map([
           //   ["Motorized", "Mot"],
           //   ["AirAssault", "Air"],
@@ -239,6 +264,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
           //   ["LightInfantry", "Inf"],
           //   ["Mechanized", "Mech"],
           // ])
+
           const subfactionMap = new Map([
             ["Motorized", "Motor"],
             ["AirAssault", "Air"],
@@ -253,10 +279,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
          let options = []
           for (const voteOption of this.server.curatedLayerPool) {
             // let option = `${voteOption[0]}_${voteOption[1]}-${voteOption[2]}_${subfactionMap.get(voteOption[3])}_vs_${voteOption[4]}_${subfactionMap.get(voteOption[5])}`
-            let option = `${voteOption[0]}_${voteOption[1]} ${voteOption[2]} ${voteOption[3]} vs ${voteOption[4]} ${voteOption[5]}`
+            // let option = `${voteOption[0]}_${voteOption[1]} ${voteOption[2]} ${voteOption[3]} vs ${voteOption[4]} ${voteOption[5]}`
+            let option = `${voteOption[1]} ${voteOption[3]} ${voteOption[4]} vs ${voteOption[5]} ${voteOption[6]}`
             options.push(option)
           }
-          this.curatedMapVoteTriggered = true
+          this.mapVoteRunning = true
           this.voteOptions = options
           this.callVote(this.voteOptions)
 
@@ -276,7 +303,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       } else if (message.startsWith(this.options.setNextFromPoolCommand)) {
           this.verbose(2, 'Set Next Command Triggered')
           if (!(splitMessage.length === 2)) {
-            this.server.rcon.warn(playerInfo.steamID, 'Invalid amount of parameters to the setnext command.\n' + "The second parameter must be a number corresponding to one of the map pool options.")
+            await this.server.rcon.warn(playerInfo.steamID, 'Invalid amount of parameters to the setnext command.\n' + "The second parameter must be a number corresponding to one of the map pool options.")
 
           } else if (this.server.curatedLayerPool === null || this.server.curatedLayerPool.length < 1) {
             this.server.rcon.warn(playerInfo.steamID, 'The map pool is currently empty. Regenerate it before attempting to set a map from the pool.')
@@ -285,24 +312,24 @@ export default class TTCustomVote extends DiscordBasePlugin {
             this.server.rcon.warn(playerInfo.steamID, 'Invalid type of parameter, must be a number\n')
 
           } else if (Number(splitMessage[1]) > this.server.curatedLayerPool.length) {
-            this.server.rcon.warn(playerInfo.steamID, 'The given number must be within bounds of the generated map pool, bounds are currently: ' + "1-" + this.server.curatedLayerPool.length - 1)
+            await this.server.rcon.warn(playerInfo.steamID, 'The given number must be within bounds of the generated map pool, bounds are currently: ' + "1-" + this.server.curatedLayerPool.length - 1)
 
           } else {
             const selectedChoice = Number(splitMessage[1]) - 1
             const selectedLayer = this.server.curatedLayerPool[selectedChoice]
-            const message = `Setting next map to: ${selectedLayer[0]}_${selectedLayer[1]} - ${selectedLayer[2]}_${selectedLayer[3]} vs ${selectedLayer[4]}_${selectedLayer[5]}`
+            const message = `Setting next map to: ${selectedLayer[1]} - ${selectedLayer[3]}_${selectedLayer[4]} vs ${selectedLayer[5]}_${selectedLayer[6]}`
             await this.server.rcon.warn(playerInfo.steamID, message)
             const mapCommand = this.assembleRCONSetNextCommandFromCSVElement(selectedLayer)
             // TODO add some sort of check to see if the selected map is valid.
-            this.server.rcon.execute(`AdminSetNextLayer ${mapCommand}`)
+            await this.server.rcon.execute(`AdminSetNextLayer ${mapCommand}`)
           }
         }
       }
     }
 
     assembleRCONSetNextCommandFromCSVElement(csv) {
-      // indexes corresponding to (map)_(layer_version) (faction1)+(subfaction) (faction2)+(subfaction)
-      return `${csv[0]}_${csv[1]} ${csv[2]}+${csv[3]} ${csv[4]}+${csv[5]}`
+      // indexes corresponding to (map)_(gamemode and layer version) (faction1)+(subfaction) (faction2)+(subfaction)
+      return `${csv[1]} ${csv[3]}+${csv[4]} ${csv[5]}+${csv[6]}`
     }
     async sendCuratedPool(playerInfo) {
       if (!this.server.curatedLayerList) {
@@ -319,7 +346,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       let warnList = []
       let message = "Generated matchup pool: \n\n"
       for (let i = 0; i < sampleList.length; i++) {
-        const assembledLayer = `${i+1}. ${sampleList[i][0]}_${sampleList[i][1]} - ${sampleList[i][2]}_${sampleList[i][3]} vs ${sampleList[i][4]}_${sampleList[i][5]}`
+        const assembledLayer = `${i+1}. ${sampleList[i][1]} - ${sampleList[i][3]}_${sampleList[i][4]} vs ${sampleList[i][5]}_${sampleList[i][6]}`
         message += assembledLayer
         message += '\n\n'
         // Only allow 2 layers per warn message, otherwise the message will become too long and not send.
@@ -394,9 +421,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
         if (totals[i] > max) {
           tie = false;
           winner = this.voteOptions[i];
-          if (this.curatedMapVoteTriggered) {
+          if (this.mapVoteRunning) {
             this.mapVoteWinner = this.server.curatedLayerPool[i]
-            this.curatedMapVoteTriggered = false
+            this.mapVoteRunning = false
           }
           max = totals[i];
         }
@@ -450,43 +477,43 @@ export default class TTCustomVote extends DiscordBasePlugin {
       return Math.floor(Math.random() * (max - min + 1)) + min;
     }
 
-    async loadLayerList(path, delimiter) {
-      return new Promise((resolve, reject) => {
-        let layers = [];
-
-        fs.createReadStream(path)
-          .pipe(csv())
-          .on('data', (row) => {
-            // Process each row of the CSV data
-            let colValue = row._0;
-
-            if (!colValue.length) { return }
-            colValue = colValue.trim()
-            const regex = /^(?:\w+(?:,|\s*;\s*)){5}\w+$/;
-            if (!regex.test(colValue)) { return }
-
-            const colData = colValue.split(delimiter);
-            for (let i = 0; i < colData.length; i++) {
-                colData[i] = colData[i].trim()
-            }
-            layers.push(colData);
-          })
-          .on('end', () => {
-              this.verbose( 1, 'Curated layers data successfully loaded');
-              resolve(layers);
-          })
-          .on('error', (err) => {
-              this.verbose(1, 'Error occurred while processing CSV file:' + err);
-              reject(err)
-          });
-        });
-    }
+    // TODO remove this once new one has been tested thoroughly.
+    // async loadLayerListOld(path, delimiter) {
+    //   return new Promise((resolve, reject) => {
+    //     let layers = [];
+    //
+    //     fs.createReadStream(path)
+    //       .pipe(csv())
+    //       .on('data', (row) => {
+    //         // Process each row of the CSV data
+    //         let colValue = row._0;
+    //
+    //         const regex = /^(?:\w+(?:,|\s*;\s*)){6}\w+$/;
+    //         if (!regex.test(colValue)) { return }
+    //
+    //         colValue = colValue.trim()
+    //         const colData = colValue.split(delimiter);
+    //         for (let i = 0; i < colData.length; i++) {
+    //             colData[i] = colData[i].trim()
+    //         }
+    //         layers.push(colData);
+    //       })
+    //       .on('end', () => {
+    //           this.verbose( 1, 'Curated layers data successfully loaded');
+    //           resolve(layers);
+    //       })
+    //       .on('error', (err) => {
+    //           this.verbose(1, 'Error occurred while processing CSV file:' + err);
+    //           reject(err)
+    //       });
+    //     });
+    // }
 
     clearVote() {
       this.mapvote = false;
       this.voteInProgress = false;
       this.ballotBox = new Map();
       this.voteOptions = [];
-      this.curatedMapVoteTriggered = false
+      this.mapVoteRunning = false
     }
 }
