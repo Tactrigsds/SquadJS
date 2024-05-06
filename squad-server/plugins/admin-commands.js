@@ -85,7 +85,8 @@ export default class AdminCommands extends DiscordBasePlugin {
     this.onChatMessage = this.onChatMessage.bind(this);
     this.onPlayerConnected = this.onPlayerConnected.bind(this);
     this.onRoundEnd = this.onRoundEnd.bind(this);
-
+    this.listLastPlayedMaps = this.listLastPlayedMaps.bind(this)
+    this.listLastRoundsTicketCounts = this.listLastRoundsTicketCounts.bind(this)
     this.checkTarget = function checkTarget(admin, target) {
       const matched = [];
       for (const p of this.server.players) {
@@ -449,11 +450,11 @@ export default class AdminCommands extends DiscordBasePlugin {
         break;
 
       case '!maps':
-        await this.listLastPlayedMaps(playerInfo)
+        this.listLastPlayedMaps(playerInfo)
         break;
 
       case '!tickets':
-        await this.listLastRoundsTicketCounts(playerInfo)
+        this.listLastRoundsTicketCounts(playerInfo)
         break
       default:
     }
@@ -473,7 +474,7 @@ export default class AdminCommands extends DiscordBasePlugin {
         message += 'Draw \n\n'
       } else {
         // message += `Layer: ${data.winner.layer} - Team ${data.winner.team}: ${data.winner.faction} won:\n ${data.winner.tickets}-${data.loser.tickets} tickets\n\n`
-        message += `Layer: ${data.winner.layer} - Team ${data.winner.team}: ${data.winner.faction} won by ${data.winner.tickets - data.loser.tickets}} tickets\n\n`
+        message += `${data.winner.layer} - Team ${data.winner.team}: ${data.winner.faction} won by ${data.winner.tickets - data.loser.tickets} tickets\n\n`
       }
       if (i % 2 === 0) {
         warns.push(message)
@@ -481,11 +482,13 @@ export default class AdminCommands extends DiscordBasePlugin {
       }
     }
 
-    warns.push(message)
+    if (message.length > 3) {
+      warns.push(message)
+    }
 
     for (let i = 0; i < 3; i++) {
       for (const warnMessage of warns) {
-        await this.server.rcon.warn(playerInfo.steamID, warnMessage)
+        this.server.rcon.warn(playerInfo.steamID, warnMessage)
       }
       await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeSeconds));
     }
@@ -505,7 +508,9 @@ export default class AdminCommands extends DiscordBasePlugin {
       }
     }
 
-    warns.push(message)
+    if (message.length > 3) {
+      warns.push(message)
+    }
 
     for (let i = 0; i < 3; i++) {
       for (const warnMessage of warns) {
@@ -554,7 +559,7 @@ export default class AdminCommands extends DiscordBasePlugin {
         this.server.rcon.broadcast(
           `The server is now randomizing players for balance. Squads will be disbanded.`
         );
-        console.log('Disbanding squads 1 to 10 on each team...');
+        this.verbose(1, 'Disbanding squads 1 to 10 on each team...');
         this.server.randomizeFlag = false;
         await this.server.updatePlayerList();
         const players = this.server.players.slice(0);
