@@ -32,8 +32,8 @@ export default class NextLayerSet extends BasePlugin {
 
 
   async onSetMap(info) {
-    this.verbose(1, 'Next map set detected.')
+    // TODO this event doesen't work properly when subfactions are included in a map set command.
+    this.verbose(1, 'Next layer set has been detected, it has been set to: ' + info.nextLayer)
     await this.server.warnAllAdmins(`The next layer has been set to: ${info.nextLayer}`)
-    // console.log(info)
   }
 }
