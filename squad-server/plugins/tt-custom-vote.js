@@ -98,7 +98,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.onChatMessage = this.onChatMessage.bind(this);
       this.sendCuratedPool = this.sendCuratedPool.bind(this);
       this.loadLayerList = this.loadLayerList.bind(this);
-      this.generateCuratedPool = this.generateCuratedPool.bind(this);
+      this.generateCuratedPoolDefault = this.generateCuratedPoolDefault.bind(this);
       this.tallyVotes = this.tallyVotes.bind(this);
       this.callVote = this.callVote.bind(this);
       this.clearVote = this.clearVote.bind(this);
@@ -110,7 +110,6 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.voteOptions = [];
       this.mapVoteWinner = null;
       this.mapVoteRunning = false;
-      // this.poolGenerationTime = null;
       this.poolGenerationTime = new Date()
     }
 
@@ -159,7 +158,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
     async onNewGame(info){
       this.mapVoteWinner = null
-      this.server.curatedLayerPool = await this.generateCuratedPool()
+      this.server.curatedLayerPool = await this.generateCuratedPoolDefault()
     }
     //
     async onChatMessage(info) {
@@ -250,7 +249,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       // Run admin commands
       if (!this.options.ignoreChats.includes(info.chat)) {
 
-        if (info.message.toLowerCase() === this.options.generatePoolCommand) {
+        if (splitMessage[0] === this.options.generatePoolCommand || '!reroll') {
           if (this.mapVoteRunning) {
             await this.server.rcon.warn(playerInfo.steamID, 'Cannot generate a new pool while a mapvote is running.')
             return;
@@ -263,10 +262,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
             await this.server.rcon.warn(playerInfo.steamID, `Pool was regenerated too recently. Please wait ${Math.abs(Math.round((10000 - timeSinceLastCall) / 1000))} seconds before calling it again`)
             return
           }
-
           this.poolGenerationTime = currentTime
+          if (splitMessage.length === 1) {
+            this.server.curatedLayerPool = await this.generateCuratedPoolDefault()
+          }
 
-          this.server.curatedLayerPool = await this.generateCuratedPool()
           this.verbose(2, 'The admin triggering the generation: ' + playerInfo.name)
           this.server.generateCuratedPool = await this.generateCuratedPool(playerInfo)
           await this.server.rcon.warn(playerInfo.steamID, 'Map pool generated. Displaying new pool:')
@@ -326,7 +326,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
           } else if (!(!isNaN(splitMessage[1]))) {
             await this.server.rcon.warn(playerInfo.steamID, 'Invalid type of parameter, must be a number\n')
   0
-          } else if (Number(splitMessage[1]) > this.server.curatedLayerPool.length) {
+          } else if (Number(splitMessage[1]) > this.options.layerPoolSize) {
             await this.server.rcon.warn(playerInfo.steamID, 'The given number must be within bounds of the generated map pool, bounds are currently: ' + "1-" + this.server.curatedLayerPool.length - 1)
 
           } else {
@@ -334,9 +334,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
             const selectedLayer = this.server.curatedLayerPool[selectedChoice]
             const message = `Setting next map to: ${selectedLayer[1]} - ${selectedLayer[3]}_${selectedLayer[4]} vs ${selectedLayer[5]}_${selectedLayer[6]}`
             await this.server.rcon.warn(playerInfo.steamID, message)
-            const mapCommand = this.assembleRCONSetNextCommandFromCSVElement(selectedLayer)
+            const command = this.assembleRCONSetNextCommandFromCSVElement(selectedLayer)
             // TODO add some sort of check to see if the selected map is valid.
-            await this.server.rcon.execute(`AdminSetNextLayer ${mapCommand}`)
+            await this.server.rcon.setNextLayer(command)
           }
         }
       }
@@ -381,7 +381,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       }
     }
 
-    async generateCuratedPool() {
+    async generateCuratedPoolDefault() {
       this.verbose(1, 'Generating map pool');
 
       const pool = [];
@@ -395,14 +395,14 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
       while (pool.length < this.options.layerPoolSize) {
         const rand = this.getRandomInt(0, allLayers.length - 1);
-        const layer = allLayers[rand];
-        const mapName = layer[0];
+        const pick = allLayers[rand];
+        const mapName = pick[0];
 
         if (pool.some(picks => picks[0] === mapName) || recentlyPlayedLayers.has(mapName.toLowerCase().trim())) {
           continue;
         }
 
-        pool.push(layer);
+        pool.push(pick);
       }
 
       this.poolGenerationTime = Date.now();
@@ -410,8 +410,45 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
 
 
+
+
     // Generates the pool of maps from the paramaters given to the command. For ex. !genpool Narva Mutaha Yehorivka will generate a pool of those maps
-    async generatePoolFromParameters() {
+    async generatePoolFromParameters(splitMessage) {
+      // maps =
+      let basrah = { name: 'Narva', identifiers: ['basrah', 'albasrah', 'al_basrah'] }
+      let anvil = { name: "Anvil", identifiers: ['anvil'] }
+      let belaya = { name: "Belaya", identifiers: ['bel', 'belaya'] }
+      let blackcoast = { name: "Black Coast", identifiers: ['blackcoast', 'bc', 'black_coast']}
+      let chora = { name: "Chora", identifiers: ['chora']}
+      let fallujah = { name: "Fallujah", identifiers: ['fallu', 'fallujah']}
+      let foolsroad = { name: "Fools Road", identifiers: ['fools', 'fr', 'foolsroad']}
+      let goosebay = { name: "Goose Bay", identifiers: ['goose', 'gb', 'goosebay', 'goose_bay']}
+      let gorodok = { name: "Gorodok", identifiers: ['gorodok', 'goro']}
+      let harju = { name: "Harju", identifiers: ['harju']}
+      let kamdesh = { name: "Kamdesh", identifiers: ['kamdesh']}
+      let kohat = { name: "Kohat", identifiers: ['kohat', 'kohat_toi', 'kohattoi']}
+      let kokan = { name: "Kokan", identifiers: ['kokan']}
+      let lashkar = { name: "Lashkar", identifiers: ['lashkar', 'lash']}
+      let manic = { name: "Manic",identifiers: ['manic', 'manicouagan', 'manicougan']}
+      let mestia = { name: "Mestia", identifiers: ['mestia']}
+      let mutaha = { name: "Mutaha", identifiers: ['mutaha']}
+      let narva = { name: "Narva", identifiers: ['narva']}
+      let sanxian = { name: "Sanxian", identifiers: ['sanxian', "sanx"]}
+      let skorpo = { name: "Skorpo", identifiers: ['skorpo', 'skorp']}
+      let tallil = { name: "Tallil", identifiers: ['tallil', 'talil']}
+      let yeho = { name: "Yehorivka", identifiers: ['yehorivka', 'yeho']}
+
+      const allMaps = []
+      const mapSizes = ['small', 'medium', 'large']
+      //
+      // if (splitMessage.length === 2) {
+      //   if (mapSizes.includes(splitMessage[1].toLowerCase().trim())) {
+      //     // TODO add handling for generating pool of specific
+      //   }
+      // }
+
+
+
 
     }
 
@@ -501,8 +538,10 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
 
     assembleRCONSetNextCommandFromCSVElement(csv) {
+      const command = `${csv[1]} ${csv[3]}+${csv[4]} ${csv[5]}+${csv[6]}`
+      this.verbose(3, 'Constructed map command: ' + command)
       // indexes corresponding to (map)_(gamemode and layer version) (faction1)+(subfaction) (faction2)+(subfaction)
-      return `${csv[1]} ${csv[3]}+${csv[4]} ${csv[5]}+${csv[6]}`
+      return command
     }
 
 
