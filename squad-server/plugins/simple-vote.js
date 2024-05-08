@@ -125,8 +125,8 @@ export default class SimpleVote extends DiscordBasePlugin {
   }
 
   async unmount() {
-    this.server.on('CHAT_MESSAGE', this.onChatMessage);
-    this.server.on('NEW_GAME', this.onNewGame);
+    this.server.removeEventListener('CHAT_MESSAGE', this.onChatMessage);
+    this.server.removeEventListener('NEW_GAME', this.onNewGame);
   }
 
   async onNewGame(info) {
