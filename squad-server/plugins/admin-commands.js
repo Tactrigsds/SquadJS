@@ -456,6 +456,18 @@ export default class AdminCommands extends DiscordBasePlugin {
       case '!tickets':
         this.listLastRoundsTicketCounts(playerInfo)
         break
+
+      case '!shownext':
+        let message;
+        if (this.server.nextFactions && this.server.nextLayerAlt) {
+          message = `Next layer: ${this.server.nextLayerAlt} \n`
+          message += `Factions: ${this.server.nextFactions}`
+        } else {
+          message = `The next maps has either not been manually set by admins, or SquadJS crashed or was restarted during this round.`
+        }
+        this.server.rcon.warn(playerInfo.steamID, message)
+        break;
+
       default:
     }
   }
@@ -514,7 +526,7 @@ export default class AdminCommands extends DiscordBasePlugin {
 
     for (let i = 0; i < 3; i++) {
       for (const warnMessage of warns) {
-        await this.server.rcon.warn(playerInfo.steamID, warnMessage)
+        this.server.rcon.warn(playerInfo.steamID, warnMessage)
       }
       await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeSeconds));
     }
