@@ -463,9 +463,9 @@ export default class AdminCommands extends DiscordBasePlugin {
           message = `Next layer: ${this.server.nextLayerAlt} \n`
           message += `Factions: ${this.server.nextFactions}`
         } else {
-          message = `The next maps has either not been manually set by admins, or SquadJS crashed or was restarted during this round.`
+          message = `The next map has either not been manually set by admins this round, SquadJS crashed or was restarted during this round.`
         }
-        this.server.rcon.warn(playerInfo.steamID, message)
+        await this.server.rcon.warn(playerInfo.steamID, message)
         break;
 
       default:
@@ -507,7 +507,7 @@ export default class AdminCommands extends DiscordBasePlugin {
   }
 
   async listLastPlayedMaps(playerInfo) {
-    let layerHistory = this.server.layerHistory
+    const layerHistory = this.server.layerHistory
     let warns = []
     let message = `The last 5 maps were: \n\n`
     for (let i = 0; i < layerHistory.length && i < 5; ++i) {
