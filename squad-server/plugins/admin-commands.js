@@ -500,7 +500,7 @@ export default class AdminCommands extends DiscordBasePlugin {
 
     for (let i = 0; i < 3; i++) {
       for (const warnMessage of warns) {
-        this.server.rcon.warn(playerInfo.steamID, warnMessage)
+        await this.server.rcon.warn(playerInfo.steamID, warnMessage)
       }
       await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeSeconds));
     }
@@ -526,7 +526,7 @@ export default class AdminCommands extends DiscordBasePlugin {
 
     for (let i = 0; i < 3; i++) {
       for (const warnMessage of warns) {
-        this.server.rcon.warn(playerInfo.steamID, warnMessage)
+        await this.server.rcon.warn(playerInfo.steamID, warnMessage)
       }
       await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeSeconds));
     }
