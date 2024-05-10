@@ -17,6 +17,8 @@ export default class Rcon extends EventEmitter {
   constructor(options = {}) {
     super();
 
+    this.setMaxListeners(25);
+
     // store config
     for (const option of ['host', 'port', 'password'])
       if (!(option in options)) throw new Error(`${option} must be specified.`);

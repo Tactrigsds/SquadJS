@@ -13,7 +13,7 @@ export default class LogParser extends EventEmitter {
     super();
 
     options.filename = filename;
-
+    this.setMaxListeners(25)
     this.eventStore = {
       disconnected: {}, // holding area, cleared on map change.
       players: [], // persistent data, steamid, controller, suffix.
