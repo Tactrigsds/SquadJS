@@ -149,17 +149,18 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.verbose(3, 'Loaded layers: ' + this.options.curatedLayerListPath)
       this.verbose(3, 'Curated pool on mount: ' + this.server.mapPool)
    }
+
     async unmount(){
       this.server.removeEventListener(this.onChatMessage)
       this.server.removeEventListener(this.onNewGame)
     }
 
     async loadLayerList(path, delimiter) {
-      let layers = []
+      const layers = []
       try {
         const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
         const data = fs.readFileSync(path, 'utf-8')
-        let lines = data.split('\n')
+        const lines = data.split('\n')
         for (let line of lines) {
           line = line.trim()
           if (regex.test(line)) {
@@ -168,7 +169,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
               line[i] = line[i].trim()
             }
 
-            let layer = {
+            const layer = {
               level: line[0],
               layer: line[1],
               size: line[2],
@@ -187,7 +188,6 @@ export default class TTCustomVote extends DiscordBasePlugin {
         this.verbose(2, err)
       }
       this.verbose(3, 'Loaded layers:' + layers)
-      console.log(layers)
       return layers
     }
 
@@ -196,9 +196,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.mapVoteWinner = null
       this.server.mapPool = await this.generateCuratedPoolDefault()
     }
+
     //
     async onChatMessage(info) {
+      // eslint-disable-next-line no-unused-vars
       const adminChat = 'ChatAdmin'
+      // eslint-disable-next-line no-unused-vars
       const commands = []
       this.info = info
 
@@ -278,9 +281,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
         this.callVote(this.voteOptions);
       }
 
-      let playerInfo = await this.server.getPlayerBySteamID(info.steamID)
-      let splitMessage = info.message.toLowerCase().split(" ")
-      let message = info.message.toLowerCase()
+      const playerInfo = await this.server.getPlayerBySteamID(info.steamID)
+      const splitMessage = info.message.toLowerCase().split(" ")
+      const message = info.message.toLowerCase()
 
       // Run admin commands
       if (!this.options.ignoreChats.includes(info.chat)) {
@@ -331,10 +334,10 @@ export default class TTCustomVote extends DiscordBasePlugin {
             ["Mechanized", "Mech"],
           ])
 
-          let options = []
+          const options = []
           for (const voteOption of this.server.mapPool) {
             // let option = `${voteOption[1]} ${voteOption[3]} ${voteOption[4]} vs ${voteOption[5]} ${voteOption[6]}`
-            let option = `${voteOption.layer} ${voteOption.faction1} ${subfactionMap.get(voteOption.subfaction1)} vs ${voteOption.faction2} ${subfactionMap.get(voteOption.subfaction2)}`
+            const option = `${voteOption.layer} ${voteOption.faction1} ${subfactionMap.get(voteOption.subfaction1)} vs ${voteOption.faction2} ${subfactionMap.get(voteOption.subfaction2)}`
             options.push(option)
           }
           this.mapVoteRunning = true
@@ -363,7 +366,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
           } else if (!splitMessage[1].match(/^[0-9]+/)) {
             await this.server.rcon.warn(playerInfo.steamID, 'Invalid type of parameter, must be a number\n')
-  0
+  
           } else if (parseInt(splitMessage[1]) > this.options.layerPoolSize || parseInt(splitMessage[1]) < 1) {
             await this.server.rcon.warn(playerInfo.steamID, 'The given number must be within bounds of the generated map pool, bounds are currently: ' + "1-" + this.server.mapPool.length - 1)
 
@@ -395,8 +398,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
         return;
       }
 
-      let pool = this.server.mapPool
-      let warnList = []
+      const pool = this.server.mapPool
+      const warnList = []
       let message = "Generated matchup pool: \n\n"
       for (let i = 0; i < pool.length; i++) {
         const assembledLayer = `${i+1}. ${pool[i].layer} - ${pool[i].faction1}_${pool[i].subfaction1} vs ${pool[i].faction2}_${pool[i].subfaction2}`
@@ -429,7 +432,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       const pool = [];
       const allLayers = this.server.curatedLayerList;
       const recentlyPlayedMaps = new Set(this.server.layerHistory.map(recentLayer => recentLayer.layer.map.name.toLowerCase().trim()));
-      const recentlyPlayedFactions = new Set(this.server.layerHistory.map(recentLayer => recentLayer.layer.map.name.toLowerCase().trim()));
+      // const recentlyPlayedFactions = new Set(this.server.layerHistory.map(recentLayer => recentLayer.layer.map.name.toLowerCase().trim()));
       // console.log(this.server.layerHistory[0].layer.teams)
       if (allLayers.length < this.options.layerPoolSize || allLayers.length <= recentlyPlayedMaps.size) {
         // If there are not enough available layers or too many duplicates in recently played layers, return an empty pool
@@ -468,15 +471,18 @@ export default class TTCustomVote extends DiscordBasePlugin {
       }
 
       function checkIfMapInMessage(message) {
-        for (let map of maps) {
+        for (const map of maps) {
           if (map.identifiers.includes(message)) {
             return map
           }
         }
       }
 
+      // eslint-disable-next-line no-unused-vars
       function getGameMode(layer) {
-        return layer[1].split("_")[1]
+        // Layers are usually formatted as follows:
+        // Level(Map)_GameMode_Version
+        return layer.layer.split("_")[1]
       }
 
       // Filters to be compared against.
@@ -510,10 +516,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
       const symmetricalIdentifiers = ['symm', 'sym', 'symmetrical']
       // const symmetricalFilter = { name: 'Symmetrical', identifiers: , enabled: false }
 
+      // TODO improve the handling for the various flags and filters.
+
       this.verbose(1, 'Generating map pool');
-      let messages = splitMessage.map(message => message.toLowerCase().trim())
-      let parameters = messages.slice(1)
-      let globalGameMode = "";
+      const messages = splitMessage.map(message => message.toLowerCase().trim())
+      const parameters = messages.slice(1)
       let mapPoolFilters = []
       let desiredMaps = []
       let pool = []
@@ -533,14 +540,18 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
 
 
-      let filterOptions = []
+      const filterOptions = []
       // Check if a global filter was supplied with no map options.
       if (parameters.length === 0) {
-        // DEFAULT IS DEFINED HERE, IF NO FLAGS OR MAPS ARE GIVEN.
+        /*
+        Default is defined here. This portion defines the default flags and setup.
+
+        Currently, we want at least one of the picks to be a symmetrical match up. Which one will be random.
+         */
         let tempMapSizes = mapSizes
         const symmPickInt = this.getRandomInt(0, mapSizes.length - 1)
         const symmRandomSize = tempMapSizes[symmPickInt]
-        tempMapSizes.splice(symmPickInt, 1)
+        tempMapSizes = tempMapSizes.splice(symmPickInt, 1)
         // const otherSize
         filterOptions.push(createBaseFilterOption(true, symmRandomSize, ''))
         for (const size of tempMapSizes) {
@@ -556,7 +567,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
 
 
-      messages.forEach(message => { let map = checkIfMapInMessage(message); if (map) { desiredMaps.push(map) }})
+      messages.forEach(message => { const map = checkIfMapInMessage(message); if (map) { desiredMaps.push(map) }})
       // if (parameters.filter(value => { const intersection = mapSizes.includes(value); return intersection.length > 1}))
       // if (parameters.length === 0) { mapPoolFilters = mapSizes }
       if (parameters.some(parameter => symmetricalIdentifiers.includes(parameter))) { globalFilters.symmetrical = true }
@@ -564,17 +575,17 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
       // Create get the filters and maps and combine them.
       // Process a pick option if maps have been given as input.
-      let pickOptions = []
+      const pickOptions = []
       for (let i = 0; i < desiredMaps.length; i++) {
-        let pick = desiredMaps[i];
+        const pick = desiredMaps[i];
         // console.log(pick)
         console.log(globalFilters.symmetrical)
-        let pickOption = createMapOption(pick.name, pick.identifiers, globalFilters.symmetrical, globalGameMode)
+        const pickOption = createMapOption(pick.name, pick.identifiers, globalFilters.symmetrical, globalGameMode)
         pickOptions.push(pickOption)
       }
 
       const allLayers = this.server.curatedLayerList;
-      const safeLayers = []
+      // const safeLayers = []
       const recentlyPlayedMaps = new Set(this.server.layerHistory.map(recentLayer => recentLayer.layer.map.name.toLowerCase().trim()));
       let filteredLayers = allLayers
 
@@ -591,12 +602,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
       // }
 
       // Find picks based on the maps already given.
-      for (let option of pickOptions) {
+      for (const option of pickOptions) {
         let pick;
         let potentialPicks = await filteredLayers.filter(layer => {
-          let trimmedPotentialPick = layer.level.replace(" ", "").toLowerCase()
-          let trimmedOption = option.map.replace(" ", "").toLowerCase()
-          if (trimmedPotentialPick.includes(trimmedOption)) { return true }
+          const trimmedPotentialPick = layer.level.replace(" ", "").toLowerCase()
+          const trimmedOption = option.map.replace(" ", "").toLowerCase()
+          return trimmedPotentialPick.includes(trimmedOption);
         })
         potentialPicks = potentialPicks.filter(layer => !pool.includes(layer))
 
