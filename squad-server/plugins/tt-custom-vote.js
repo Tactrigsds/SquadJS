@@ -142,7 +142,6 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.server.on('CHAT_MESSAGE', this.onChatMessage)
       this.server.on('NEW_GAME', this.onNewGame)
       this.verbose(2, 'Mounted')
-      // TODO change the layer list so it uses an object to represent a layer instead of just an array of strings.
       this.server.curatedLayerList = await this.loadLayerList(this.options.curatedLayerListPath, this.options.csvDelimiter)
       this.server.mapPool = [];
       this.server.mapPool = await this.generateCuratedPoolDefault();
@@ -459,7 +458,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
 
     // Generates the pool of maps from the paramaters given to the command. For ex. !genpool Narva Mutaha Yehorivka will generate a pool of those maps
-    async generatePoolFromParameters(splitMessage, playerInfo) {
+    async generatePoolFromParameters(splitMessage = [], playerInfo = null) {
       function createMap(name, identifiers) {
         return { name, identifiers };
       }
@@ -491,16 +490,19 @@ export default class TTCustomVote extends DiscordBasePlugin {
           })
         }
         if (symmetricalFilter) {
-          layers = layers.filter(layer => {return layer.subfaction1 === layer.subfaction2})
+          layers = layers.filter(layer => { return layer.subfaction1 === layer.subfaction2 })
         }
         if (gameModeFilter) {
           layers = layers.filter(layer => getGameMode(layer).toLowerCase() === gameModeFilter)
+        }
+        if (mapSizeFilter) {
+
+          layers = layers.filter(layer => layer.size.toLowerCase() === mapSizeFilter)
         }
 
         return layers
       }
 
-      // eslint-disable-next-line no-unused-vars
       function getGameMode(layer) {
         // Layers are usually formatted as follows:
         // Level(Map)_GameMode_Version
@@ -560,6 +562,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       // We want to keep track of parameters that were invalid or redudant the user of them.
 
       for (const parameter of parameters) {
+        this.verbose(2, `Parameter: ${parameter}`)
         const level = getGameLevel(parameter)
         if (level && desiredMaps.length < this.mapPoolSize) {
           desiredMaps.push(level)
@@ -582,6 +585,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
           invalidParameters.push(parameter);
         }
       }
+
+      if (playerInfo) {
+        await this.server.rcon.warn(playerInfo.steamID, 'The following parameters were either invalid or redundant:')
+        await this.server.rcon.warn(playerInfo.steamID, invalidParameters.join(", "))
+      }
+
 
       if (desiredMapSizes.length === 1) {globalFilters.mapSize = desiredMapSizes[0]}
 
@@ -607,18 +616,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
       // Create get the filters and maps and combine them.
       // Process a pick option if maps have been given as input.
-      // let desiredMapFilters = []
-      const desiredMapFilters = desiredMaps.map(layer => createMapOption(layer.name, layer.identifiers, globalFilters.symmetrical, globalFilters.gameMode))
-      //
-      // for (const pick of desiredMaps) {
-      //   // TODO adjust to use global or local/parameter specific filters when those are implemented.
-      //   const pickOption = createMapOption(pick.name, pick.identifiers, globalFilters.symmetrical, globalFilters.gameMode)
-      //   desiredMapFilters.push(pickOption)
-      // }
 
+      // TODO adjust to use global or local/parameter specific filters when those are implemented.
+      const desiredMapFilters = desiredMaps.map(layer => createMapOption(layer.name, layer.identifiers, globalFilters.symmetrical, globalFilters.gameMode))
       const allLayers = this.server.curatedLayerList;
       const recentlyPlayedMaps = this.server.layerHistory.map(recentLayer => recentLayer.layer.map.name.toLowerCase().trim().replace(" ", ""))
-
 
       // Find picks based on the maps given as parameters.
       // We want these to take precedence.
@@ -684,24 +686,22 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
 
 
-    async generatePoolBase(filteredLayers, recentlyPlayed, allowRecentlyPlayed, poolLength) {
+    async generatePoolBase(currentPool = [], filteredLayers, recentlyPlayed, allowRecentlyPlayed, poolLength) {
 
       if(!allowRecentlyPlayed) {
         filteredLayers = filteredLayers.filter(layer => !recentlyPlayed.includes(layer.level.toLowerCase().replace(" ", "")))
       }
 
       // If there are not enough available layers or too many duplicates in recently played layers, return an empty pool
-      if (filteredLayers.length < poolLength) {
-        return filteredLayers;
+      if (filteredLayers.length + currentPool.length < poolLength) {
+        return currentPool;
       }
-      const pool = []
 
-      while (pool.length < poolLength) {
-        // const candidateInt = this.getRandomInt(0, filteredLayers.length - 1)
+      while (currentPool.length < poolLength) {
         const candidatePick = this.getRandomArrayElement(filteredLayers)
-        pool.push(candidatePick)
+        currentPool.push(candidatePick)
       }
-      return pool
+      return currentPool
     }
 
 
