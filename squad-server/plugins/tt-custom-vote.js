@@ -368,8 +368,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
           } else if (!splitMessage[1].match(/^[0-9]+/)) {
             await this.server.rcon.warn(playerInfo.steamID, 'Invalid type of parameter, must be a number\n')
   
-          } else if (parseInt(splitMessage[1]) > this.options.layerPoolSize || parseInt(splitMessage[1]) < 1) {
-            await this.server.rcon.warn(playerInfo.steamID, 'The given number must be within bounds of the generated map pool, bounds are currently: ' + "1-" + this.server.mapPool.length - 1)
+          } else if (parseInt(splitMessage[1].trim()) > this.mapPoolSize || parseInt(splitMessage[1].trim()) < 1) {
+            // console.log(splitMessage[1])
+            await this.server.rcon.warn(playerInfo.steamID, 'The given number must be within bounds of the generated map pool, bounds are currently: ' + "1-" + (this.mapPoolSize))
 
           } else {
             const selectedChoice = Number(splitMessage[1]) - 1
@@ -617,56 +618,24 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
       const allLayers = this.server.curatedLayerList;
       const recentlyPlayedMaps = this.server.layerHistory.map(recentLayer => recentLayer.layer.map.name.toLowerCase().trim().replace(" ", ""))
-      let globalFilteredLayers = allLayers
 
-      // Apply all the filters and get a list of those filtered layers.
-      if (globalFilters.symmetrical) {
-        globalFilteredLayers = globalFilteredLayers.filter(layer => this.isSymmetrical(layer))
-      }
-      if (globalFilters.mapSize) {
-        globalFilteredLayers = globalFilteredLayers.filter(layer => layer.size === globalFilters.mapSize)
-      }
-      // TODO enable this once game modes as a flag is supported.
-      // if (globalFilters.gameMode) {
-      //     filteredLayers = filteredLayers.filter(layer => getGameMode(layer[1]) === globalFilters.gameMode)
-      // }
 
       // Find picks based on the maps given as parameters.
       // We want these to take precedence.
       // If one of the map options does not have a valid pick, we simply move on and have broader filters.
       for (const option of desiredMapFilters) {
-        let filteredMaps = filterLayers(allLayers, option.map, option.symmetrical, option.gameMode, "")
-
-        // let tempFilteredMaps = this.server.curatedLayerList;
-        // if (option.symmetrical) {
-        //   tempFilteredMaps = tempFilteredMaps.filter(layer => this.isSymmetrical(layer))
-        // }
-        //
-        // if (option.gameMode) {
-        //   tempFilteredMaps = tempFilteredMaps.filter(layer => getGameMode(layer).toLowerCase() === option.gameMode)
-        // }
-        //
-        // tempFilteredMaps = await tempFilteredMaps.filter(layer => {
-        //   const trimmedPotentialPick = layer.level.replace(" ", "").toLowerCase()
-        //   const trimmedOption = option.map.replace(" ", "").toLowerCase()
-        //   return trimmedPotentialPick.includes(trimmedOption);
-        // })
-        // Remove *exact* same picks from the pool. I.e identical factions and subfactions.
-        // tempFilteredMaps = tempFilteredMaps.filter(layer => !pool.includes(layer))
+        const filteredMaps = filterLayers(allLayers, option.map, option.symmetrical, option.gameMode, "")
 
         // There are no valid picks according to the filters, so we continue.
         if (!filteredMaps || filteredMaps.length === 0) {
           this.server.rcon.warn(playerInfo.steamID, `Specified map did not have any available layers according to the given filters: \n${option.map}`)
           continue
         }
-        // console.log('About to generate pool...')
 
         // TODO discuss whether this part should take past layers into consideration.
         const map = await this.generatePoolBase(filteredMaps, recentlyPlayedMaps, true, 1)
-        console.log(map)
         if (map) { mapPool.push(map[0]) }
       }
-
 
       if (mapPool.length >= this.mapPoolSize) {
         return mapPool.slice(0, this.mapPoolSize)
@@ -684,41 +653,13 @@ export default class TTCustomVote extends DiscordBasePlugin {
         filterOptions.push(option)
       }
 
-      console.log(filterOptions)
-
+      // Handle defaults and attempt to get maps from the filters that were specified if not enough maps were supplied.
       for (const option of filterOptions) {
-        let filteredLayers = allLayers.filter(layer => layer.size.toLowerCase().trim().includes(option.mapSize))
-        // console.log(filteredLayers)
-        if (globalFilters.symmetrical) {
-          filteredLayers = filteredLayers.filter(layer => this.isSymmetrical(layer))
-        }
-        // if (globalFilters.gameMode) {
-        //   filteredLayers = filteredLayers.filter(layer => getGameMode(layer[1]) === globalFilters.gameMode)
-        // }
-
-
-        // let pick;
-        // if (!filteredLayers || (filteredLayers.length < this.mapPoolSize - pool.length)) {
-        //   await this.server.rcon.warn(playerInfo.steamID, `Unable to generate layer with specified global filters.`)
-        //   continue
-        // }
-        //
-        // while (!pick || filteredLayers.length) {
-        //   const randomInt = this.getRandomInt(0, filteredLayers.length - 1);
-        //   const candidate = filteredLayers[randomInt];
-        //   const mapName = candidate[0];
-        //
-        //   if (pool.some(picks => picks[0] === mapName) || recentlyPlayedMaps.has(mapName.toLowerCase().trim())) {
-        //     filteredLayers.splice(randomInt, 1)
-        //     continue;
-        //   }
-        //   pool.push(mapName)
-        //   pick = mapName;
-        //   break
-        // }
+        const filteredLayers = filterLayers(allLayers, "", option.symmetrical, option.gameMode, option.mapSize)
+        const map = await this.generatePoolBase(filteredLayers, recentlyPlayedMaps, false, 1)
+        if (map) { mapPool.push(map[0]) }
       }
 
-      // We use this as backup.
 
       if (allLayers.length < this.options.layerPoolSize || allLayers.length <= recentlyPlayedMaps.size) {
         // If there are not enough available layers or too many duplicates in recently played layers, return an empty pool
@@ -746,7 +687,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
     async generatePoolBase(filteredLayers, recentlyPlayed, allowRecentlyPlayed, poolLength) {
 
       if(!allowRecentlyPlayed) {
-        filteredLayers = filteredLayers.filter(layer => recentlyPlayed.includes(layer.level.toLowerCase().replace(" ", "")))
+        filteredLayers = filteredLayers.filter(layer => !recentlyPlayed.includes(layer.level.toLowerCase().replace(" ", "")))
       }
 
       // If there are not enough available layers or too many duplicates in recently played layers, return an empty pool
