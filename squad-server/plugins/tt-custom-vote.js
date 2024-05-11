@@ -125,7 +125,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.tallyVotes = this.tallyVotes.bind(this);
       this.callVote = this.callVote.bind(this);
       this.clearVote = this.clearVote.bind(this);
-      this.checkIfSymmetrical = this.checkIfSymmetrical.bind(this)
+      this.isSymmetrical = this.isSymmetrical.bind(this)
 
       this.mapvote = false;
       this.voteInProgress = false;
@@ -187,7 +187,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
         this.verbose(1, 'Error occured when loading the layers file')
         this.verbose(2, err)
       }
-      this.verbose(3, 'Loaded layers:' + layers)
+      this.verbose(3, 'Loaded layers:')
+      // console.log(layers)
+      // this.verbose(3, layers)
       return layers
     }
 
@@ -303,7 +305,6 @@ export default class TTCustomVote extends DiscordBasePlugin {
           // }
 
           this.poolGenerationTime = currentTime
-
 
           // this.server.mapPool = this.generateCuratedPoolDefault()
           this.server.mapPool = await this.generatePoolFromParameters(splitMessage, playerInfo)
@@ -470,7 +471,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
         return { symmetrical, mapSize, gameMode }
       }
 
-      function checkIfMapInMessage(message) {
+      function getGameLevel(message) {
         for (const map of maps) {
           if (map.identifiers.includes(message)) {
             return map
@@ -512,125 +513,136 @@ export default class TTCustomVote extends DiscordBasePlugin {
         createMap('Yehorivka', ['yehorivka', 'yeho'])
       ]
       const mapSizes = ['small', 'medium', 'large'];
-      const gameModes = ['AAS', 'RAAS', 'Invasion', 'TC', 'Insurgency', 'Demolition']
+      const gameModes = ['aas', 'raas', 'invasion', 'tc', 'insurgency', 'demolition']
       const symmetricalIdentifiers = ['symm', 'sym', 'symmetrical']
       // const symmetricalFilter = { name: 'Symmetrical', identifiers: , enabled: false }
 
       // TODO improve the handling for the various flags and filters.
 
       this.verbose(1, 'Generating map pool');
+      const desiredMaps = []
+      const globalFilters = { symmetrical: false, mapSize: "", gameMode: "" }
       const messages = splitMessage.map(message => message.toLowerCase().trim())
       const parameters = messages.slice(1)
-      let mapPoolFilters = []
-      let desiredMaps = []
-      let pool = []
-      let globalFilters = { symmetrical: false, mapSize: "", gameMode: "RAAS" }
-
-
+      const validParameters = []
+      const invalidParameters = []
+      const desiredMapSizes = []
+      const filterOptions = []
+      const pool = []
       // TODO
       // 1. Get filters from parameters.
       // 2. Retrieve the valid layers based on the maps
       // 3. If any specific maps are in the parameters, those take precedence.
       // 4. Select a layer based on the map.
 
+      // We perform the parameter filtering here.
+      // We want to keep track of parameters that were invalid or redudant the user of them.
+
+      for (const parameter of parameters) {
+        const level = getGameLevel(parameter)
+        if (level && desiredMaps.length < this.mapPoolSize) {
+          desiredMaps.push(level)
+          validParameters.push(parameter)
+        }
+
+        else if (mapSizes.includes(parameter) && desiredMapSizes.length < this.mapPoolSize) {
+          desiredMapSizes.push(parameter);
+          validParameters.push(parameter);
+
+        } else if (gameModes.includes(parameter) && !globalFilters.gameMode) {
+          globalFilters.gameMode = parameter;
+          validParameters.push(parameter);
+
+        } else if (symmetricalIdentifiers.includes(parameter) && !globalFilters.symmetrical) { // Changed the condition here
+          globalFilters.symmetrical = true;
+          validParameters.push(parameter);
+
+        } else {
+          invalidParameters.push(parameter);
+        }
+      }
+
+      if (desiredMapSizes.length === 1) {globalFilters.mapSize = desiredMapSizes[0]}
+
       /*
-      Potential solutions:
-      1. Make a class that's supposed to represent each potential map for the map pool. Stores options like symmetrical, game mode, map name, factions etc.
-      */
+      This here defines the default options if there are no valid parameters given.
+      The rules are basically these:
+      1. We want to ensure one of the picks is always symmetrical.
+      2. We want to have picks of all the 3 different sizes, i.e 1 map each of small, medium and large.
+       */
 
-
-
-      const filterOptions = []
-      // Check if a global filter was supplied with no map options.
-      if (parameters.length === 0) {
-        /*
-        Default is defined here. This portion defines the default flags and setup.
-
-        Currently, we want at least one of the picks to be a symmetrical match up. Which one will be random.
-         */
-        let tempMapSizes = mapSizes
+      if (validParameters.length === 0) {
+        const tempSizes = mapSizes
         const symmPickInt = this.getRandomInt(0, mapSizes.length - 1)
-        const symmRandomSize = tempMapSizes[symmPickInt]
-        tempMapSizes = tempMapSizes.splice(symmPickInt, 1)
+        const symmRandomSize = tempSizes[symmPickInt]
+        tempSizes.splice(symmPickInt, 1)
         // const otherSize
         filterOptions.push(createBaseFilterOption(true, symmRandomSize, ''))
-        for (const size of tempMapSizes) {
+        for (const size of tempSizes) {
           filterOptions.push(createBaseFilterOption(false, size, ''))
         }
-
       }
-      else if (parameters.length === 1) {
-        if (mapSizes.includes(parameters[0].toLowerCase())) {
-          globalFilters.mapSize = parameters[0].toLowerCase()
-        }
-      }
-
-
-
-      messages.forEach(message => { const map = checkIfMapInMessage(message); if (map) { desiredMaps.push(map) }})
-      // if (parameters.filter(value => { const intersection = mapSizes.includes(value); return intersection.length > 1}))
-      // if (parameters.length === 0) { mapPoolFilters = mapSizes }
-      if (parameters.some(parameter => symmetricalIdentifiers.includes(parameter))) { globalFilters.symmetrical = true }
 
 
       // Create get the filters and maps and combine them.
       // Process a pick option if maps have been given as input.
-      const pickOptions = []
+      const desiredMapFilters = []
       for (let i = 0; i < desiredMaps.length; i++) {
         const pick = desiredMaps[i];
-        // console.log(pick)
-        console.log(globalFilters.symmetrical)
-        const pickOption = createMapOption(pick.name, pick.identifiers, globalFilters.symmetrical, globalGameMode)
-        pickOptions.push(pickOption)
+
+        // TODO adjust to use global or local/parameter specific filters when those are implemented.
+        const pickOption = createMapOption(pick.name, pick.identifiers, globalFilters.symmetrical, globalFilters.gameMode)
+        desiredMapFilters.push(pickOption)
       }
 
       const allLayers = this.server.curatedLayerList;
-      // const safeLayers = []
-      const recentlyPlayedMaps = new Set(this.server.layerHistory.map(recentLayer => recentLayer.layer.map.name.toLowerCase().trim()));
-      let filteredLayers = allLayers
+      const recentlyPlayedMaps = this.server.layerHistory.map(recentLayer => recentLayer.layer.map.name.toLowerCase().trim().replace(" ", ""))
+      let globalFilteredLayers = allLayers
 
-      // Get all layers with global filters.
+      // Apply all the filters and get a list of those filtered layers.
       if (globalFilters.symmetrical) {
-        filteredLayers = filteredLayers.filter(layer => this.checkIfSymmetrical(layer))
+        globalFilteredLayers = globalFilteredLayers.filter(layer => this.isSymmetrical(layer))
       }
       if (globalFilters.mapSize) {
-        filteredLayers = filteredLayers.filter(layer => layer.size === globalFilters.mapSize)
+        globalFilteredLayers = globalFilteredLayers.filter(layer => layer.size === globalFilters.mapSize)
       }
       // TODO enable this once game modes as a flag is supported.
       // if (globalFilters.gameMode) {
       //     filteredLayers = filteredLayers.filter(layer => getGameMode(layer[1]) === globalFilters.gameMode)
       // }
 
-      // Find picks based on the maps already given.
-      for (const option of pickOptions) {
-        let pick;
-        let potentialPicks = await filteredLayers.filter(layer => {
+      // Find picks based on the maps given as parameters.
+      // We want these to take precedence.
+      // If one of the map options does not have a valid pick, we simply move on and have broader filters.
+      for (const option of desiredMapFilters) {
+        let tempFilteredMaps = allLayers;
+        if (option.symmetrical) {
+          tempFilteredMaps = await tempFilteredMaps.filter(layer => this.isSymmetrical(layer))
+        }
+        if (option.gameMode) {
+          tempFilteredMaps = await tempFilteredMaps.filter(layer => getGameMode(layer).toLowerCase() === option.gameMode)
+        }
+
+        console.log(tempFilteredMaps)
+
+        tempFilteredMaps = await tempFilteredMaps.filter(layer => {
           const trimmedPotentialPick = layer.level.replace(" ", "").toLowerCase()
           const trimmedOption = option.map.replace(" ", "").toLowerCase()
           return trimmedPotentialPick.includes(trimmedOption);
         })
-        potentialPicks = potentialPicks.filter(layer => !pool.includes(layer))
+        // Remove *exact* same picks from the pool. I.e identical factions and subfactions.
+        // tempFilteredMaps = tempFilteredMaps.filter(layer => !pool.includes(layer))
 
         // There are no valid picks according to the filters, so we continue.
-
-        if (!potentialPicks || potentialPicks.length === 0 || potentialPicks.every(v => pool.includes(v))) {
+        if (!tempFilteredMaps || tempFilteredMaps.length === 0) {
           this.server.rcon.warn(playerInfo.steamID, `Specified map did not have any available layers according to the given filters: \n${option.map}`)
           continue
         }
+        // console.log('About to generate pool...')
 
         // TODO discuss whether this part should take past layers into consideration.
-        while (!pick) {
-          const rand = this.getRandomInt(0, potentialPicks.length - 1);
-          const layerCandidate = potentialPicks[rand];
-          const mapName = layerCandidate.level;
-          if (pool.some(picks => picks.level === mapName)) { continue }
-          else pick = layerCandidate
-          break;
-          // if (pool.some(picks => picks[0] === mapName) || recentlyPlayedMaps.has(mapName.toLowerCase().trim())) {
-          //   continue;
-          // }
-        }
-        if (pick) { pool.push(pick) }
+        const map = await this.generatePoolBase(tempFilteredMaps, recentlyPlayedMaps, true, 1)
+        if (map) { pool.push(map[0]) }
       }
 
       if (pool.length >= this.mapPoolSize) {
@@ -641,7 +653,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       for (let i = pool.length + filterOptions.length; i < this.mapPoolSize; i++) {
         let mapSize;
         if (!globalFilters.mapSize) {
-          mapSize = mapSizes[this.getRandomInt(0, mapSizes.length - 1)]
+          mapSize = this.getRandomArrayElement(mapSizes)
         } else {
           mapSize = globalFilters.mapSize
         }
@@ -649,12 +661,14 @@ export default class TTCustomVote extends DiscordBasePlugin {
         filterOptions.push(option)
       }
 
-      for (const option of filterOptions) {
+      console.log(filterOptions)
 
-        // filteredLayers = filteredLayers.filter(layer => layer.size === globalFilters.mapSize)
+      for (const option of filterOptions) {
         let filteredLayers = allLayers.filter(layer => layer.size.toLowerCase().trim().includes(option.mapSize))
+        console.log(filteredLayers)
         if (globalFilters.symmetrical) {
-          filteredLayers = filteredLayers.filter(layer => this.checkIfSymmetrical(layer))
+          filteredLayers = filteredLayers.filter(layer => {let symmetrical = this.isSymmetrical(layer)
+          console.log(symmetrical); return symmetrical})
         }
         // if (globalFilters.gameMode) {
         //   filteredLayers = filteredLayers.filter(layer => getGameMode(layer[1]) === globalFilters.gameMode)
@@ -690,11 +704,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
       }
 
       while (pool.length < this.options.layerPoolSize) {
-        const rand = this.getRandomInt(0, allLayers.length - 1);
-        const pick = allLayers[rand];
+
+        const pick = this.getRandomArrayElement(allLayers)
         const mapName = pick.level;
 
-        if (pool.some(picks => picks.level === mapName) || recentlyPlayedMaps.has(mapName.toLowerCase().trim())) {
+        if (pool.some(picks => picks.level === mapName) || recentlyPlayedMaps.includes(mapName.toLowerCase().trim())) {
           continue;
         }
 
@@ -707,7 +721,35 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
 
 
-    checkIfSymmetrical(layerOption) {
+    async generatePoolBase(filteredLayers, recentlyPlayed, allowRecentlyPlayed, poolLength) {
+
+      if(!allowRecentlyPlayed) {
+        filteredLayers = filteredLayers.filter(layer => recentlyPlayed.includes(layer.level.toLowerCase().replace(" ", "")))
+      }
+
+      // If there are not enough available layers or too many duplicates in recently played layers, return an empty pool
+      if (filteredLayers.length < poolLength) {
+        return filteredLayers;
+      }
+      const pool = []
+
+      while (pool.length < poolLength) {
+        // const candidateInt = this.getRandomInt(0, filteredLayers.length - 1)
+        const candidatePick = this.getRandomArrayElement(filteredLayers)
+        pool.push(candidatePick)
+      }
+      return pool
+    }
+
+
+    getRandomArrayElement(array) {
+      return array[this.getRandomInt(0, array.length)]
+    }
+
+
+
+
+    isSymmetrical(layerOption) {
       // Tentative, likely to change.
       // Format
       // Level: Layer: Size: Faction_1: SubFac_1: Faction_2: SubFac_2
