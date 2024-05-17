@@ -1,26 +1,13 @@
-import Sequelize from 'sequelize';
-
 import BasePlugin from './base-plugin.js';
+import DBLog from "./db-log.js";
 
-const { DataTypes, QueryTypes } = Sequelize;
-
-export default class DBLog extends BasePlugin {
+export default class PersistentHistory extends BasePlugin {
   static get description() {
-    return (
-      'The <code>mysql-log</code> plugin will log various server statistics and events to a database. This is great ' +
-      'for server performance monitoring and/or player stat tracking.' +
-      '\n\n' +
-      'Grafana:\n' +
-      '<ul><li> <a href="https://grafana.com/">Grafana</a> is a cool way of viewing server statistics stored in the database.</li>\n' +
-      '<li>Install Grafana.</li>\n' +
-      '<li>Add your database as a datasource named <code>SquadJS</code>.</li>\n' +
-      '<li>Import the <a href="https://github.com/Team-Silver-Sphere/SquadJS/blob/master/squad-server/templates/SquadJS-Dashboard-v2.json">SquadJS Dashboard</a> to get a preconfigured MySQL only Grafana dashboard.</li>\n' +
-      '<li>Install any missing Grafana plugins.</li></ul>'
-    );
+    return ("Plugin that will pull data from earlier rounds ");
   }
 
   static get defaultEnabled() {
-    return false;
+    return true;
   }
 
   static get optionsSpecification() {
@@ -37,5 +24,57 @@ export default class DBLog extends BasePlugin {
         default: null
       }
     };
+  }
+
+
+  constructor(server, options, connectors) {
+    super(server, options, connectors);
+    this.onDatabaseUpdated = this.onDatabaseUpdated.bind(this)
+    this.updateLayerHistory = this.updateLayerHistory.bind(this)
+  }
+
+  async filterAndSortMatches(matches) {
+    matches = matches.map(match => match.dataValues)
+    matches = matches.filter(match => {
+      // If there is no end time, it is either the current game, or SquadJS wasn't running when it ended.
+      // In either case, we're not really interested in the match.
+      return !(!match.endTime);
+    })
+
+    return matches
+  }
+
+  async updateLayerHistory() {
+    const matches = await this.DBLogPlugin.models.Match.findAll({})
+    const filteredMatches = await this.filterAndSortMatches(matches)
+    const layerHistoryClamp = Math.max(0, filteredMatches.length - this.server.layerHistoryMaxLength)
+    this.server.layerHistoryNew = filteredMatches.slice(layerHistoryClamp).reverse()
+    this.verbose(3, this.server.layerHistoryNew)
+  }
+
+
+  async mount() {
+    this.DBLogPlugin = this.server.plugins.find(p => p instanceof DBLog);
+    if (!this.DBLogPlugin) return;
+
+    this.server.on('NEW_GAME', this.onDatabaseUpdated)
+    await this.updateLayerHistory()
+    this.verbose(1, 'Loaded layer history from database...')
+  }
+
+  async onDatabaseUpdated() {
+    try {
+      await this.updateLayerHistory()
+      this.verbose(1, 'Layer history updated.')
+
+    }
+    catch (e) {
+      this.verbose(1, 'Unable to update layer history from the database...')
+      this.verbose(2, e)
+    }
+  }
+
+  async unmount() {
+    this.server.removeEventListener(this.onDatabaseUpdated)
   }
 }
