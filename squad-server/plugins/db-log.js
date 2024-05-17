@@ -95,6 +95,12 @@ export default class DBLog extends BasePlugin {
       team2: {
           type: DataTypes.STRING
       },
+      subFactionTeam1: {
+          type: DataTypes.STRING
+      },
+      subFactionTeam2: {
+          type: DataTypes.STRING
+      },
       winnerTeam: {
           type: DataTypes.STRING
       },
@@ -549,6 +555,8 @@ export default class DBLog extends BasePlugin {
       layer: info.layer ? info.layer.name : null,
       startTime: info.time
     });
+
+    this.server.emit('DATABASE_UPDATED')
   }
 
   async onPlayerWounded(info) {
@@ -709,18 +717,20 @@ export default class DBLog extends BasePlugin {
   }
 
   async roundEnded(info) {
-      let isDraw = (!info.winner || !info.loser)
-      await this.models.Match.update(
-          {
-              winnerTeam: info.winner?.faction,
-              winnerTeamID: +info.winner?.team,
-              team1: +info.winner?.team == 1 ? info.winner.faction : info.loser?.faction,
-              team2: +info.winner?.team == 2 ? info.winner.faction : info.loser?.faction,
-              tickets: +(+info.winner?.tickets - +info.loser?.tickets),
-              isDraw: isDraw
-          },
-          { where: { server: this.options.overrideServerID || this.server.id, endTime: null } }
-      );
+    const isDraw = (!info.winner || !info.loser)
+    await this.models.Match.update(
+      {
+        winnerTeam: info.winner?.faction,
+        winnerTeamID: +info.winner?.team,
+        team1: +info.winner?.team === 1 ? info.winner.faction : info.loser?.faction,
+        team2: +info.winner?.team === 2 ? info.winner.faction : info.loser?.faction,
+        subFactionTeam1: +info.winner?.team === 1 ? info.winner.subfaction : info.loser?.subfaction,
+        subFactionTeam2: +info.winner?.team === 2 ? info.winner.subfaction : info.loser?.subfaction,
+        tickets: +(+info.winner?.tickets - +info.loser?.tickets),
+        isDraw: isDraw
+      },
+      { where: { server: this.options.overrideServerID || this.server.id, endTime: null } }
+    );
   }
 
   async migrateSteamUsersIntoPlayers() {

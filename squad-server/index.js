@@ -14,6 +14,8 @@ import { SQUADJS_VERSION } from './utils/constants.js';
 
 import fetchAdminLists from './utils/admin-lists.js';
 
+EventEmitter.setMaxListeners(0)
+
 export default class SquadServer extends EventEmitter {
 
   constructor(options = {}) {
@@ -24,13 +26,14 @@ export default class SquadServer extends EventEmitter {
       if (!(option in options)) throw new Error(`${option} must be specified.`);
 
     // FIXME This is an experimental test to see if it alleviate some of the issues we've been having.
-    this.setMaxListeners(25)
+    this.setMaxListeners(50)
     this.id = options.id;
     this.options = options;
     this.warnMessageCharLimit = 215
     this.serverBroadcastCharLimit = 200
     this.warnMessagePersistenceTimeSeconds = 6100
     this.matchHistory = []
+    this.matchHistoryNew = []
     this.layerHistory = [];
     this.layerHistoryMaxLength = options.layerHistoryMaxLength || 20;
 
@@ -209,7 +212,6 @@ export default class SquadServer extends EventEmitter {
 
     this.logParser.on('NEW_GAME', async (data) => {
       data.layer = await Layers.getLayerByClassname(data.layerClassname);
-
       this.layerHistory.unshift({ layer: data.layer, time: data.time });
       this.layerHistory = this.layerHistory.slice(0, this.layerHistoryMaxLength);
       this.currentLayer = data.layer;

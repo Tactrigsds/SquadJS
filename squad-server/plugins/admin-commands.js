@@ -1,4 +1,5 @@
 import DiscordBasePlugin from './discord-base-plugin.js';
+import {factions, getSubfaction, subfactionAbbreviations} from "../utils/subfactions.js";
 
 export default class AdminCommands extends DiscordBasePlugin {
   static get description() {
@@ -85,8 +86,8 @@ export default class AdminCommands extends DiscordBasePlugin {
     this.onChatMessage = this.onChatMessage.bind(this);
     this.onPlayerConnected = this.onPlayerConnected.bind(this);
     this.onRoundEnd = this.onRoundEnd.bind(this);
-    this.listLastPlayedMaps = this.listLastPlayedMaps.bind(this)
-    this.listLastRoundsTicketCounts = this.listLastRoundsTicketCounts.bind(this)
+    this.listRecentMatchDataShort = this.listRecentMatchDataShort.bind(this)
+    this.listRecentMatchDataLong = this.listRecentMatchDataLong.bind(this)
     this.checkTarget = function checkTarget(admin, target) {
       const matched = [];
       for (const p of this.server.players) {
@@ -450,11 +451,11 @@ export default class AdminCommands extends DiscordBasePlugin {
         break;
 
       case '!maps':
-        this.listLastPlayedMaps(playerInfo)
+        await this.listRecentMatchDataShort(playerInfo)
         break;
 
       case '!tickets':
-        this.listLastRoundsTicketCounts(playerInfo)
+        await this.listRecentMatchDataLong(playerInfo)
         break
 
       case '!shownext':
@@ -472,22 +473,74 @@ export default class AdminCommands extends DiscordBasePlugin {
     }
   }
 
-  async listLastRoundsTicketCounts(playerInfo) {
-    let matchHistory = this.server.matchHistory
-    let warns = []
-    let message = `The ticket count of the last 5 rounds were: \n\n`
+  async listRecentMatchDataLong(playerInfo) {
+    const mapsToSendCount = 5
+    const matchHistory = this.server.layerHistoryNew
+    const warns = []
+    if (!matchHistory.length) {
+      await this.server.rcon.warn(playerInfo.steamID, 'Match history is empty. SquadJS was most likely unable to contact the database.')
+      return;
+    }
 
-    for (let i = 0; i < matchHistory.length && i < 5; ++i) {
-      let data = matchHistory[i]
-      message += `${i+1}. `
 
-      // If the game is a draw, there is no winner or loser data that can be parsed.
-      if (!data.winner || !data.loser) {
-        message += 'Draw \n\n'
-      } else {
-        // message += `Layer: ${data.winner.layer} - Team ${data.winner.team}: ${data.winner.faction} won:\n ${data.winner.tickets}-${data.loser.tickets} tickets\n\n`
-        message += `${data.winner.layer} - Team ${data.winner.team}: ${data.winner.faction} won by ${data.winner.tickets - data.loser.tickets} tickets\n\n`
+    let message = `Match data from the last 5 rounds: \n\n`
+
+    for (let i = 0; i < matchHistory.length && i < mapsToSendCount; ++i) {
+      const data = matchHistory[i]
+      let team1 = factions.get(data.team1)
+      let team2 = factions.get(data.team2)
+
+      // let subfaction1 = data.subFactionTeam1;
+      // let subfaction2 = data.subFactionTeam2;
+      let subfaction1abb = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam1));
+      let subfaction2abb = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam2));
+      let subfaction1 = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam1));
+      let subfaction2 = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam2));
+
+
+      // console.log(data.layerClassname)
+      // console.log(team1 + ":" + subfaction1)
+      // console.log(team2 + ":" + subfaction2)
+
+
+      const winnerTeam = factions.get(data.winnerTeam)
+      const endTime = data.endTime
+      // const localHours = endTime.getHours().toString().padStart(2, '0')
+      // const localMinutes = endTime.getMinutes().toString().padStart(2, '0')
+      // const localDate = endTime.getDate()
+      // const localMonth = endTime.getMonth()
+      // const localMonth = endTime.getMonth()
+      // const localDay = endTime.getDay()
+
+
+      message += `${i+1}.  `
+      message += `${data.layerClassname}\n`
+
+      if (team1 && team2) {
+        if (subfaction1 && subfaction2) {
+          message += `T1: ${team1}+${subfaction1}\n`
+          message += `T2: ${team2}+${subfaction2}`
+        }
+        else {
+          message += `T1: ${team1} vs T2: ${team2}`
+        }
+        message += `\n`
+        if (!data.isDraw) {
+          message += `T${data.winnerTeamID}: ${winnerTeam} won by ${data.tickets} tickets.`
+        }
       }
+      else {
+        message += `No factions available`
+        message += '\n'
+        message += 'Match was a draw.'
+
+      }
+      message += `\n\n`
+      // message += `Match End time: ${serverTime}`
+      // message += `Match End time: ${localHours}:${localMinutes}`
+
+      // message += `\n\n`
+
       if (i % 2 === 0) {
         warns.push(message)
         message = "\n\n"
@@ -506,13 +559,34 @@ export default class AdminCommands extends DiscordBasePlugin {
     }
   }
 
-  async listLastPlayedMaps(playerInfo) {
-    const layerHistory = this.server.layerHistory
-    let warns = []
-    let message = `The last 5 maps were: \n\n`
-    for (let i = 0; i < layerHistory.length && i < 5; ++i) {
-      message += `${i+1}. ` + layerHistory[i].layer.name
-      message += "\n\n"
+  async listRecentMatchDataShort(playerInfo) {
+    const mapsToSendCount = 5
+    const matchHistory = this.server.layerHistoryNew
+    const warns = []
+    if (!matchHistory.length) {
+      await this.server.rcon.warn(playerInfo.steamID, 'Match history is empty. SquadJS was most likely unable to contact the database.')
+      return;
+    }
+
+
+    let message = `Match data from the last 5 rounds: \n\n`
+
+    for (let i = 0; i < matchHistory.length && i < mapsToSendCount; ++i) {
+      const data = matchHistory[i]
+      const endTime = data.endTime
+      const localHours = endTime.getHours().toString().padStart(2, '0')
+      const localMinutes = endTime.getMinutes().toString().padStart(2, '0')
+      // const localDate = endTime.getDate()
+      // const localMonth = endTime.getMonth()
+      // const localMonth = endTime.getMonth()
+      // const localDay = endTime.getDay()
+
+
+      message += `${i+1}.  `
+      message += `${data.layerClassname}\n`
+      // message += `\n`
+      message += `Match End time: ${localHours}:${localMinutes} EST`
+      message += `\n\n`
 
       if (i % 2 === 0) {
         warns.push(message)
@@ -599,7 +673,7 @@ export default class AdminCommands extends DiscordBasePlugin {
           }
           team = team === '1' ? '2' : '1';
         }
-        console.log(`Swapped ${randomized} players on !randomizenext`);
+        this.verbose(1, `Swapped ${randomized} players on !randomizenext`);
       }
 
       let switched = 0;
@@ -607,7 +681,6 @@ export default class AdminCommands extends DiscordBasePlugin {
         switched++;
         await this.server.rcon.execute(`AdminForceTeamChange ${steamID}`);
       }
-      console.log(`Swapped ${switched} players on !switchnext`);
       this.server.switchList = [];
     }, 10000);
     this.server.banlist.clear();

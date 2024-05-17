@@ -3,7 +3,7 @@ import DBLog from "./db-log.js";
 
 export default class PersistentHistory extends BasePlugin {
   static get description() {
-    return ("Plugin that will pull data from earlier rounds ");
+    return ("This plugin will pull previous match data from a database and  ");
   }
 
   static get defaultEnabled() {
@@ -48,6 +48,7 @@ export default class PersistentHistory extends BasePlugin {
     const matches = await this.DBLogPlugin.models.Match.findAll({})
     const filteredMatches = await this.filterAndSortMatches(matches)
     const layerHistoryClamp = Math.max(0, filteredMatches.length - this.server.layerHistoryMaxLength)
+    // We reverse the matches, so we get the most recent matches first.
     this.server.layerHistoryNew = filteredMatches.slice(layerHistoryClamp).reverse()
     this.verbose(3, this.server.layerHistoryNew)
   }
@@ -57,7 +58,7 @@ export default class PersistentHistory extends BasePlugin {
     this.DBLogPlugin = this.server.plugins.find(p => p instanceof DBLog);
     if (!this.DBLogPlugin) return;
 
-    this.server.on('NEW_GAME', this.onDatabaseUpdated)
+    this.server.on('DATABASE_UPDATED', this.onDatabaseUpdated)
     await this.updateLayerHistory()
     this.verbose(1, 'Loaded layer history from database...')
   }
