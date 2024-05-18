@@ -13,11 +13,13 @@ const SERVERDATA_CHAT_VALUE = 0x01;
 const MID_PACKET_ID = 0x01;
 const END_PACKET_ID = 0x02;
 
+EventEmitter.setMaxListeners(0)
+
 export default class Rcon extends EventEmitter {
   constructor(options = {}) {
     super();
 
-    this.setMaxListeners(25);
+    this.setMaxListeners(0);
 
     // store config
     for (const option of ['host', 'port', 'password'])

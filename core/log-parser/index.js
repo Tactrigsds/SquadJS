@@ -8,12 +8,16 @@ import Logger from '../logger.js';
 import TailLogReader from './log-readers/tail.js';
 import FTPLogReader from './log-readers/ftp.js';
 
+
+EventEmitter.setMaxListeners(0)
+
+
 export default class LogParser extends EventEmitter {
   constructor(filename = 'filename.log', options = {}) {
     super();
 
     options.filename = filename;
-    this.setMaxListeners(25)
+    this.setMaxListeners(0)
     this.eventStore = {
       disconnected: {}, // holding area, cleared on map change.
       players: [], // persistent data, steamid, controller, suffix.
