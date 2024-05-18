@@ -363,15 +363,15 @@ export default class AdminCommands extends DiscordBasePlugin {
       case '!switchnow':
         if (shorthand) {
           await this.server.rcon.execute(`AdminForceTeamChange ${matched.steamID}`)
-          this.server.rcon.warn(matched.steamID, `You have been swapped to the other team by an admin because of ${reason}`)
-          this.server.rcon.warn(playerInfo.steamID, `Swapped ${matched.name} to the other team beacuse of ${reason}`)
+          await this.server.rcon.warn(matched.steamID, `You have been swapped to the other team by an admin because of ${reason}`)
+          await this.server.rcon.warn(playerInfo.steamID, `Swapped ${matched.name} to the other team beacuse of ${reason}`)
           channel.send(
             `Admin ${playerInfo.name} swapped ${matched.name} to the other team.`
           )
         } else {
           await this.server.rcon.execute(`AdminForceTeamChange ${matched.steamID}`)
-          this.server.rcon.warn(matched.steamID, "You have been swapped to the other team by an admin")
-          this.server.rcon.warn(playerInfo.steamID, `Swapped ${matched.name} to the other team`)
+          await this.server.rcon.warn(matched.steamID, "You have been swapped to the other team by an admin")
+          await this.server.rcon.warn(playerInfo.steamID, `Swapped ${matched.name} to the other team`)
           channel.send(
             `Admin ${playerInfo.name} swapped ${matched.name} to the other team.`
           )
