@@ -722,10 +722,10 @@ export default class DBLog extends BasePlugin {
       {
         winnerTeam: info.winner?.faction,
         winnerTeamID: +info.winner?.team,
-        team1: +info.winner?.team === 1 ? info.winner.faction : info.loser?.faction,
-        team2: +info.winner?.team === 2 ? info.winner.faction : info.loser?.faction,
-        subFactionTeam1: +info.winner?.team === 1 ? info.winner.subfaction : info.loser?.subfaction,
-        subFactionTeam2: +info.winner?.team === 2 ? info.winner.subfaction : info.loser?.subfaction,
+        team1: +info.winner?.team == 1 ? info.winner.faction : info.loser?.faction,
+        team2: +info.winner?.team == 2 ? info.winner.faction : info.loser?.faction,
+        subFactionTeam1: +info.winner?.team == 1 ? info.winner.subfaction : info.loser?.subfaction,
+        subFactionTeam2: +info.winner?.team == 2 ? info.winner.subfaction : info.loser?.subfaction,
         tickets: +(+info.winner?.tickets - +info.loser?.tickets),
         isDraw: isDraw
       },
