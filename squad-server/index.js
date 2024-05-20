@@ -25,7 +25,6 @@ export default class SquadServer extends EventEmitter {
     for (const option of ['host'])
       if (!(option in options)) throw new Error(`${option} must be specified.`);
 
-    // FIXME This is an experimental test to see if it alleviate some of the issues we've been having.
     this.setMaxListeners(50)
     this.id = options.id;
     this.options = options;
@@ -33,8 +32,8 @@ export default class SquadServer extends EventEmitter {
     this.serverBroadcastCharLimit = 200
     this.warnMessagePersistenceTimeSeconds = 6100
     this.matchHistory = []
-    this.matchHistoryNew = []
     this.layerHistory = [];
+    this.matchHistoryNew = []
     this.layerHistoryMaxLength = options.layerHistoryMaxLength || 20;
 
     this.nextLayerAlt = null;
@@ -538,6 +537,8 @@ export default class SquadServer extends EventEmitter {
         gameVersion: data.GameVersion_s
       };
 
+      this.teamOne = data.TeamOne_s?.replace(new RegExp(data.MapName_s, 'i'), '') || ''
+      this.teamTwo = data.TeamTwo_s?.replace(new RegExp(data.MapName_s, 'i'), '') || ''
       this.serverName = info.serverName;
 
       this.maxPlayers = info.maxPlayers;
