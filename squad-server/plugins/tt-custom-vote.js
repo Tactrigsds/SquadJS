@@ -15,9 +15,18 @@ Options for subfactions:
 
 Assymetrical(assym), random/any, and symmetrical(symm)
 
+If there is a tie in the map vote, then currently the first pick is automatically set to the next map.
 
 
  */
+
+
+const LAYER_FILTERS_ENUM = Object.freeze({
+  ALLOW_RECENT_DUPLICATE_LAYERS: 0,
+  ALLOW_RECENT_DUPLICATE_MAPS: 1,
+  ALLOW_NO_RECENT_DUPLICATES: 2,
+});
+
 
 export default class TTCustomVote extends DiscordBasePlugin {
   static get description() {
@@ -98,12 +107,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
         default: ['!pool'],
         example: ['!pool']
       },
-
-      // mapPoolWipeTime: {
-      //   required: false,
-      //   description: 'The amount of time required before the map pool wipes.',
-      //   default: 200
-      // },
+      rerollCommand: {
+        required: false,
+        description: "The command for rerolling the pool generation with the last parameters.",
+        default: '!reroll',
+        example: '!reroll'
+      },
       setNextFromPoolCommand: {
         required: false,
         description: "The command for setting the next map from the index of the pool",
@@ -160,7 +169,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.tallyVotes = this.tallyVotes.bind(this);
       this.callVote = this.callVote.bind(this);
       this.clearVote = this.clearVote.bind(this);
-      this.isSymmetrical = this.isSymmetrical.bind(this)
+      this.hasSymmetricalFactions = this.hasSymmetricalFactions.bind(this)
       this.getLevelFromMapList = this.getLevelFromMapList.bind(this)
       // this.getGameMode = this.getGameMode.bind(this)
 
@@ -342,10 +351,10 @@ export default class TTCustomVote extends DiscordBasePlugin {
           // eslint-disable-next-line no-unused-vars
           const timeSinceLastPoolGen = currentTime - this.poolGenerationTime
 
-          // if (timeSinceLastPoolGen < this.options.generatePoolFrequencyLimitSeconds * 1000) {
-          //   await this.server.rcon.warn(playerInfo.steamID, `Pool was regenerated too recently. Please wait ${Math.abs(Math.round((10000 - timeSinceLastPoolGen) / 1000))} seconds before re-rolling it again`)
-          //   return
-          // }
+          if (timeSinceLastPoolGen < this.options.generatePoolFrequencyLimitSeconds * 1000) {
+            await this.server.rcon.warn(playerInfo.steamID, `Pool was regenerated too recently. Please wait ${Math.abs(Math.round((10000 - timeSinceLastPoolGen) / 1000))} seconds before re-rolling it again`)
+            return
+          }
 
           this.poolGenerationTime = currentTime
 
@@ -360,8 +369,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
             this.verbose(1, 'Error occured when sending pool.')
             this.verbose(1, err)
           }
-
-      } else if (this.options.startVoteCommands.includes(splitMessage[0])) {
+        }
+        else if (this.options.startVoteCommands.includes(splitMessage[0])) {
           if (this.mapVoteRunning) {
             await this.server.rcon.warn(playerInfo.steamID, 'Mapvote already running. End the old one before starting a new one.')
             return
@@ -386,7 +395,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
           this.voteOptions = options
           this.callVote(this.voteOptions)
 
-      } else if (message === this.options.setNextFromWinnerCommand) {
+        }
+        else if (message === this.options.setNextFromWinnerCommand) {
           if (!this.mapVoteWinner) {
             await this.server.rcon.warn(playerInfo.steamID, 'Unable to set next map. No map vote winner is saved.')
             return;
@@ -395,10 +405,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
           await this.server.rcon.setNextLayer(command)
           await this.server.rcon.warn(playerInfo.steamID, 'The winner of the vote has been set: \n' + `${this.mapVoteWinner.level}`)
 
-      } else if (this.options.readPoolCommands.includes(splitMessage[0])) {
+        }
+        else if (this.options.readPoolCommands.includes(splitMessage[0])) {
           await this.sendCuratedPool(playerInfo, 'Current Map Pool:')
 
-      } else if (splitMessage[0] === this.options.setNextFromPoolCommand) {
+        }
+        else if (splitMessage[0] === this.options.setNextFromPoolCommand) {
           this.verbose(3, 'Set Next Command Triggered')
           if (!(splitMessage.length === 2)) {
             await this.server.rcon.warn(playerInfo.steamID, 'Invalid amount of parameters to the setnext command.\n' + "The second parameter must be a number corresponding to one of the map pool options.")
@@ -421,6 +433,19 @@ export default class TTCustomVote extends DiscordBasePlugin {
             await this.server.rcon.setNextLayer(command)
           }
         }
+        else if (splitMessage[0] === this.options.rerollCommand) {
+          this.verbose(3, 'Reroll command triggered.')
+          if (!this.previousParameters.length) {
+            await this.server.rcon.warn(playerInfo.steamID, `There were no valid parameters stored from the previous pool generation.\nRunning with default settings instead.`)
+          }
+          else {
+            await this.server.rcon.warn(playerInfo.steamID, `Rerolling map pool with previous parameters...`)
+          }
+          const tempParameters = this.previousParameters
+          tempParameters.unshift('idk')
+          this.mapPool = await this.generatePoolFromParameters(tempParameters, playerInfo)
+          await this.sendCuratedPool(playerInfo, `Rerolled map pool with previous parameters:`)
+        }
       }
     }
 
@@ -439,7 +464,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
       const pool = this.mapPool
       const warnList = []
-      let message = `${preMessage} \n\n\n`
+      let message = `${preMessage} \n\n`
       for (let i = 0; i < pool.length; i++) {
         const assembledLayer = `${i+1}. ${pool[i].layer} - ${pool[i].faction1}_${pool[i].subfaction1} vs ${pool[i].faction2}_${pool[i].subfaction2}`
         message += assembledLayer
@@ -478,18 +503,13 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
 
     checkIfMapIsRecentlyPlayed(layer, recentMatches) {
-      recentMatches = recentMatches.map(match => match.layerClassname.toLowerCase().trim().replace(" ", ""))
-      return recentMatches.some(match => match.includes(layer.level.toLowerCase()))
+      const processedLayer = layer.level.toLowerCase().replace(/\s/g, '')
+      return recentMatches.some(match => processedLayer.includes(match.levelTrimmed))
     }
 
 
     // Generates the pool of maps from the paramaters given to the command. For ex. !genpool Narva Mutaha Yehorivka will generate a pool of those maps
     async generatePoolFromParameters(splitMessage = [], playerInfo = null, timeout = false) {
-
-      // This is a really stupid hack to ensure that the "persistent history" plugin can load the matches from the database before the pool is generated.
-      if (timeout) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
 
       function createMapOption(map, mapIdentifiers, symmetrical, gameMode) {
         return { map, mapIdentifiers, symmetrical, gameMode }
@@ -527,16 +547,18 @@ export default class TTCustomVote extends DiscordBasePlugin {
         return layers
       }
 
-      const LAYER_FILTERS_ENUM = Object.freeze({
-          ALLOW_RECENT_DUPLICATE_LAYERS: 0,
-          ALLOW_RECENT_DUPLICATE_MAPS: 1,
-          ALLOW_RECENT_NO_DUPLICATES: 2,
-      });
+
+      // This is a really stupid hack to ensure that the "persistent history" plugin can load the matches from the database before the pool is generated.
+      if (timeout) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
 
 
       const mapSizes = ['small', 'medium', 'large'];
       const gameModes = ['aas', 'raas', 'invasion', 'tc', 'insurgency', 'demolition']
       const symmetricalIdentifiers = this.options.symmetricalFlagIdentifiers
+      const asymmetricalIdentifiers = ['asymm', 'assymetrical', 'asymm']
+      const anyFactionMatchup = ['any', 'random']
 
       // TODO improve the handling for the various flags and filters.
 
@@ -553,16 +575,20 @@ export default class TTCustomVote extends DiscordBasePlugin {
       const allLayers = this.server.curatedLayerList;
 
 
-      this.previousParameters = validParameters
+      // let recentMatches = this.server.matchHistoryNew.slice(0, this.options.minMatchesBeforeDupeMap)
       const recentMatches = this.server.matchHistoryNew.slice(0, this.options.minMatchesBeforeDupeMap)
-      let recentMaps = recentMatches.slice(1)
-
-
-      // Preliminary plan:
-      // 1. Get filters from parameters.
-      // 2. Retrieve the valid layers based on the maps
-      // 3. If any specific maps are in the parameters, those take precedence.
-      // 4. Select a layer based on the map.
+      const recentMatches2 = recentMatches.map(match => {
+        return {
+          level: match.map,
+          layer: match.layerClassname,
+          levelTrimmed: match.layerClassname?.split('_')[0].toLowerCase().replace(/\s/g, ''),
+          layerTrimmed: match.layerClassname.toLowerCase().replace(/\s/g, ''),
+          faction1: match.team1,
+          faction2: match.team2,
+          subfaction1: match.subFactionTeam1,
+          subfaction2: match.subFactionTeam2
+        }
+      })
 
 
       // We perform the parameter filtering here.
@@ -598,6 +624,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
         await this.server.rcon.warn(playerInfo.steamID, invalidParameters.join(", "))
       }
 
+      this.previousParameters = validParameters
+
 
       if (desiredMapSizes.length === 1) { globalFilters.mapSize = desiredMapSizes[0] }
 
@@ -614,7 +642,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
         const symmPickInt = this.getRandomInt(0, mapSizes.length - 1)
         const symmRandomSize = tempSizes[symmPickInt]
         tempSizes.splice(symmPickInt, 1)
-        filterOptions.push(createBaseFilterOption(true, symmRandomSize, 'raas'))
+        filterOptions.push(createBaseFilterOption(false, symmRandomSize, 'raas'))
         for (const size of tempSizes) {
           filterOptions.push(createBaseFilterOption(true, size, 'raas'))
         }
@@ -642,7 +670,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
         }
 
         // TODO discuss whether this part should take past layers into consideration.
-        const map = this.generatePoolBase(currentMapPool, filteredMaps, recentMatches, true, 1)
+        const map = this.generatePoolBase(currentMapPool, filteredMaps, recentMatches2, true, 1)
         if (map && map.length > 0) { currentMapPool.push(map[0]) }
       }
 
@@ -665,7 +693,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       // Handle defaults and attempt to get maps from the filters that were specified if not enough maps were supplied.
       for (const option of filterOptions) {
         const filteredLayers = filterLayers(allLayers, "", option.symmetrical, option.gameMode, option.mapSize);
-        const map = this.generatePoolBase(currentMapPool, filteredLayers, recentMatches, false, 1);
+        const map = this.generatePoolBase(currentMapPool, filteredLayers, recentMatches2, false, 1);
         if (map && map.length > 0) { // Check if map is not empty before adding to mapPool
           currentMapPool.push(map[0]);
         }
@@ -675,14 +703,15 @@ export default class TTCustomVote extends DiscordBasePlugin {
         return currentMapPool.slice(0, this.mapPoolSize)
       }
 
-      if (allLayers.length < this.mapPoolSize || allLayers.length <= recentMatches.length) {
+      if (allLayers.length < this.mapPoolSize || allLayers.length <= recentMatches2.length) {
         // If there are not enough available layers or too many duplicates in recently played layers, return an empty pool
         return currentMapPool;
       }
 
       // The fallback in case we weren't able to generate a pool with the specific map picks or with the global filters.
-      currentMapPool.push(this.generatePoolBase(currentMapPool, allLayers, recentMatches, false, this.mapPoolSize - currentMapPool))
 
+      const temp = this.generatePoolBase(currentMapPool, allLayers, recentMatches2, false, this.mapPoolSize - currentMapPool.length)
+      if (temp.length) { currentMapPool.push(...temp) }
       this.poolGenerationTime = new Date();
       return currentMapPool.slice(0, this.mapPoolSize)
     }
@@ -690,6 +719,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
     generatePoolBase(existingPool = [], filteredLayers, recentMatches, allowRecentlyPlayed, poolLength) {
       const newPool = []
+
       if(!allowRecentlyPlayed) {
         filteredLayers = filteredLayers.filter(layer => !this.checkIfMapIsRecentlyPlayed(layer, recentMatches))
       }
@@ -709,13 +739,6 @@ export default class TTCustomVote extends DiscordBasePlugin {
           continue
         }
 
-        if (!allowRecentlyPlayed) {
-          if(recentMatches.some(pick => pick.level === candidatePick.level)) {
-            filteredLayers.splice(candidateInt, 1)
-            continue
-          }
-        }
-
         newPool.push(candidatePick)
       }
       return newPool
@@ -727,11 +750,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
 
 
-    isSymmetrical(layerOption) {
+    hasSymmetricalFactions(layer) {
       // Tentative, likely to change.
       // Format
       // Level: Layer: Size: Faction_1: SubFac_1: Faction_2: SubFac_2
-      return layerOption.subfaction1 === layerOption.subfaction2
+      return layer.subfaction1 === layer.subfaction2
     }
 
 
