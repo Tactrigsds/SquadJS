@@ -33,24 +33,18 @@ export default class PersistentHistory extends BasePlugin {
     this.updateLayerHistory = this.updateLayerHistory.bind(this)
   }
 
-  async filterAndSortMatches(matches) {
-    matches = matches.map(match => match.dataValues)
-    matches = matches.filter(match => {
-      // If there is no end time, it is either the current game, or SquadJS wasn't running when it ended.
-      // In either case, we're not really interested in the match.
-      return !(!match.endTime);
-    })
 
-    return matches
-  }
 
   async updateLayerHistory() {
     const matches = await this.DBLogPlugin.models.Match.findAll({})
-    const filteredMatches = await this.filterAndSortMatches(matches)
-    const layerHistoryClamp = Math.max(0, filteredMatches.length - this.server.layerHistoryMaxLength)
+    const matchesIncludingCurrent = matches.map(match => match.dataValues)
+    // const filteredMatches = await this.filterAndSortMatches(matches)
+    // const layerHistoryClamp = Math.max(0, filteredMatches.length - this.server.layerHistoryMaxLength)
+    const layerHistoryClamp = Math.max(0, matches.length - this.server.layerHistoryMaxLength)
     // We reverse the matches, so we get the most recent matches first.
-    this.server.layerHistoryNew = filteredMatches.slice(layerHistoryClamp).reverse()
-    this.verbose(3, this.server.layerHistoryNew)
+
+    this.server.matchHistoryNew = matchesIncludingCurrent.slice(layerHistoryClamp).reverse()
+    this.verbose(3, this.server.matchHistoryNew)
   }
 
 
@@ -58,9 +52,9 @@ export default class PersistentHistory extends BasePlugin {
     this.DBLogPlugin = this.server.plugins.find(p => p instanceof DBLog);
     if (!this.DBLogPlugin) return;
 
-    this.server.on('DATABASE_UPDATED', this.onDatabaseUpdated)
     await this.updateLayerHistory()
     this.verbose(1, 'Loaded layer history from database...')
+    this.server.on('DATABASE_UPDATED', this.onDatabaseUpdated)
   }
 
   async onDatabaseUpdated() {
@@ -78,4 +72,16 @@ export default class PersistentHistory extends BasePlugin {
   async unmount() {
     this.server.removeEventListener(this.onDatabaseUpdated)
   }
+}
+
+
+async function filterAndSortMatches(matches) {
+  matches = matches.map(match => match.dataValues)
+  matches = matches.filter(match => {
+    // If there is no end time, it is either the current game, or SquadJS wasn't running when it ended.
+    // In either case, we're not really interested in the match.
+    return !(!match.endTime);
+  })
+
+  return matches
 }
