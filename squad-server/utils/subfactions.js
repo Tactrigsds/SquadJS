@@ -26,7 +26,8 @@ const factions = new Map([
   ["Australian Defence Force", "ADF"],
 ])
 
-const csvData = `Faction,Subfaction,Name
+const csvData = `
+Faction,Subfaction,Name
 ADF,AirAssault,"3rd Battalion, RAR Battle Group"
 BAF,AirAssault,"2nd Battalion, Parachute Regiment Battle Group"
 CAF,AirAssault,"3rd Battalion, RCR Battle Group"
