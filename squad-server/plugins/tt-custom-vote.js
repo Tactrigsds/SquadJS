@@ -12,9 +12,9 @@ KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
  */
 
 const LAYER_FILTERS_ENUM = Object.freeze({
-  ALLOW_RECENT_DUPLICATE_LAYERS: 0,
-  ALLOW_RECENT_DUPLICATE_MAPS: 1,
-  ALLOW_NO_RECENT_DUPLICATES: 2
+  ALLOW_RECENT_DUPLICATE_LAYERS: 1,
+  ALLOW_RECENT_DUPLICATE_MAPS: 2,
+  ALLOW_NO_RECENT_DUPLICATES: 3
 });
 
 const MAP_SIZES_ENUM = Object.freeze({
@@ -145,7 +145,6 @@ export default class TTCustomVote extends DiscordBasePlugin {
         default: ["symm", "sym", "symmetrical"],
         example: ["symm", "sym", "symmetrical"]
       },
-
       mapList: {
         required: true,
         description: "A list of maps and their shorthands/identifiers that will be recognised in chat. The name is not case sensitive, but should be done correctly regardless.",
@@ -191,7 +190,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.voteOptions = [];
       this.recentPoolPicks = []
       this.previousParameters = []
-      this.adminTriggeringPoolGen = null
+      this.adminTriggeringPoolGen = { admin: null }
     }
 
   async mount() {
@@ -200,6 +199,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
     this.server.on('NEW_GAME', this.onNewGame);
     this.server.curatedLayerList = await this.loadLayerListFromDisk(this.options.curatedLayerListPath);
     this.mapPool = [];
+      this.mapPool = await this.generatePoolFromParameters([], null, true);
+      this.poolGenerationTime = new Date(0);
     try {
     } catch (err) {
       this.verbose(1, 'Unable to generate map pool.');
@@ -676,16 +677,19 @@ export default class TTCustomVote extends DiscordBasePlugin {
     for (const parameter of parameters) {
       this.verbose(2, `Parameter: ${parameter}`);
       const level = this.getLevelFromMapList(parameter);
-      const faction = checkIfMapHasFaction(parameter);
+      const faction = getFactionFromShorthand(parameter, factions);
       if (level && !desiredMaps.includes(level) && desiredMaps.length < this.mapPoolSize) {
         desiredMaps.push(level);
         validParameters.push(parameter);
-        
-      } else if (faction && !globalFactions.includes(faction)) {
+
+      // TODO pre check here if a matchup is possible?
+      }
+      else if (faction && !globalFactions.includes(faction)) {
         globalFactions.push(faction)
         validParameters.push(parameter)
 
-      } else if (mapSizes.includes(parameter) && desiredMapSizes.length < this.mapPoolSize) {
+      }
+      else if (mapSizes.includes(parameter) && desiredMapSizes.length < this.mapPoolSize) {
         desiredMapSizes.push(parameter);
         validParameters.push(parameter);
 
@@ -794,7 +798,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       }
 
       // TODO discuss whether this part should take past layers into consideration.
-      const map = this.generatePoolBase(currentMapPool, filteredMaps, recentMatches, true, 1);
+      const map = this.generatePoolBase(currentMapPool, filteredMaps, recentMatches, true, 1, false);
       if (map && map.length > 0) {
         currentMapPool.push(map[0]);
       }
@@ -855,7 +859,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
       allLayers,
       recentMatches,
       false,
-      this.mapPoolSize - currentMapPool.length
+      this.mapPoolSize - currentMapPool.length,
+      false
     );
     if (temp.length) {
       currentMapPool.push(...temp);
@@ -865,19 +870,59 @@ export default class TTCustomVote extends DiscordBasePlugin {
     return currentMapPool.slice(0, this.mapPoolSize);
   }
 
-  generatePoolBase(
-    existingPool = [],
+  generatePoolBase(existingPool = [],
     filteredLayers,
-    recentMatches,
+    matchHistory,
     allowRecentlyPlayed,
-    poolLength
+    poolLength,
+    allowRecentFactions = false,
   ) {
     const newPool = [];
 
     if (!allowRecentlyPlayed) {
       filteredLayers = filteredLayers.filter(
-        (layer) => !this.checkIfMapIsRecentlyPlayed(layer, recentMatches)
+        (layer) => !this.checkIfMapIsRecentlyPlayed(layer, matchHistory)
       );
+    }
+
+    if (!allowRecentFactions) {
+      // We need to normalize the recent history as well as the current match so that it fits with the format that we take in the layers with.
+      let history = [];
+      // The first match includes the current one, which does not include faction data.
+      const recentMatches = matchHistory.slice(1)
+
+      const currentFaction1 = this.server.teamOne.split("_")
+      const currentFaction2 = this.server.teamTwo.split("_")
+
+      const currentFactionShort1 = currentFaction1[0]
+      const currentFactionShort2 = currentFaction2[0]
+
+      const currentSubfaction1 = currentFaction1[2]
+      const currentSubfaction2 = currentFaction2[2]
+
+      history.push( {layer: matchHistory[0].layer, faction1: currentFactionShort1, faction2: currentFactionShort2, subfaction1: currentSubfaction1, subfaction2: currentSubfaction2})
+      recentMatches.forEach(match => {
+        // If there is a field for team 1, there will also be a field for team 2, so we don't need to check both.
+        if (match.faction1 && match.subfaction1 && match.faction2 && match.subfaction2) {
+          history.push( {layer: match.layer, faction1: getFactionFromLongName(match.faction1, factions)?.short, faction2: getFactionFromLongName(match.faction2, factions)?.short, subfaction1: getSubfaction(match.subfaction1), subfaction2: getSubfaction(match.subfaction2)} )
+        }
+      })
+
+      history = history.slice(0, 2)
+
+      // TODO create some sort of object to represent the options for this as it grows in scope?
+      // FOr example how many matches back should be taken into consideration etc...
+
+      // TODO get a filter/check to see if a team has played any of the PLA variant recently? Should discuss policy on this.
+      filteredLayers = filteredLayers.filter(layer => {
+        let factionNotRecentlyPlayed = true
+        for (const match of history) {
+          if (layer.faction1 === match.faction1 || layer.faction1 === match.faction2 || layer.faction2 === match.faction2 || layer.faction1 === match.faction2) {
+            factionNotRecentlyPlayed = false
+          }
+        }
+        return factionNotRecentlyPlayed
+      })
     }
 
     // If there are not enough available layers or too many duplicates in recently played layers, return an empty pool
@@ -886,13 +931,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
 
     while (filteredLayers.length && newPool.length < poolLength) {
-      // const candidatePick = this.getRandomArrayElement(filteredLayers)
       const candidateInt = getRandomInt(0, filteredLayers.length - 1);
-      // const candidatePick = this.getRandomArrayElement(filteredLayers)
       const candidatePick = filteredLayers[candidateInt];
       if (
-        existingPool.some((pick) => pick.level === candidatePick.level) ||
-        newPool.some((pick) => pick.level === candidatePick.level)
+        existingPool.some(pick => pick.level === candidatePick.level) ||
+        newPool.some(pick => pick.level === candidatePick.level)
       ) {
         filteredLayers.splice(candidateInt, 1);
         continue;
@@ -907,12 +950,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
     return array[getRandomInt(0, array.length - 1)];
   }
 
-  hasSymmetricalFactions(layer) {
-    // Tentative, likely to change.
-    // Format
-    // Level: Layer: Size: Faction_1: SubFac_1: Faction_2: SubFac_2
-    return layer.subfaction1 === layer.subfaction2;
-  }
+
 
   async tallyVotes() {
     let max = 0;
@@ -1003,6 +1041,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
     this.voteOptions = [];
     this.mapVoteRunning = false;
   }
+
+
+
 
   // Assembles a layer into the format required to set the next map.
   assembleRCONSetNextCommandFromCSVElement(csv) {
