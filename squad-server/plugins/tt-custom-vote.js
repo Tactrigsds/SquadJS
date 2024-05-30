@@ -160,6 +160,14 @@ export default class TTCustomVote extends DiscordBasePlugin {
             shorthands: ['basrah', 'albasrah', 'al_basrah']
           }
         ]
+      },
+      useWebEndpoint: {
+        required: false,
+        description: "",
+        default: {
+          enabled: false,
+          endpoint: ""
+        }
       }
     };
   }
@@ -175,9 +183,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.tallyVotes = this.tallyVotes.bind(this);
       this.callVote = this.callVote.bind(this);
       this.clearVote = this.clearVote.bind(this);
-      this.hasSymmetricalFactions = this.hasSymmetricalFactions.bind(this)
       this.getLevelFromMapList = this.getLevelFromMapList.bind(this)
-      // this.getGameMode = this.getGameMode.bind(this)
 
       this.mapvote = false;
       this.voteInProgress = false;
@@ -196,19 +202,15 @@ export default class TTCustomVote extends DiscordBasePlugin {
     this.verbose(2, 'Mounted');
     this.server.on('CHAT_MESSAGE', this.onChatMessage);
     this.server.on('NEW_GAME', this.onNewGame);
-    this.server.curatedLayerList = await this.loadLayerList(
-      this.options.curatedLayerListPath,
-      this.options.csvDelimiter
-    );
+    this.server.curatedLayerList = await this.loadLayerListFromDisk(this.options.curatedLayerListPath);
     this.mapPool = [];
     try {
-      this.mapPool = await this.generatePoolFromParameters([], null, true);
-      this.poolGenerationTime = new Date(0);
     } catch (err) {
       this.verbose(1, 'Unable to generate map pool.');
       this.verbose(1, err);
     }
     this.verbose(3, 'Loaded layers: ' + this.options.curatedLayerListPath);
+    // TODO make a function that converts the pool into a "printable" format.
     this.verbose(3, 'Curated pool on mount: ' + this.mapPool);
   }
 
@@ -217,13 +219,23 @@ export default class TTCustomVote extends DiscordBasePlugin {
     this.server.removeEventListener(this.onNewGame);
   }
 
-  async loadLayerList(path, delimiter) {
-    const layers = [];
-    try {
-      const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
-      const data = fs.readFileSync(path, 'utf-8');
-      const lines = data.split('\n');
-      for (let line of lines) {
+
+  async onNewGame(info) {
+    this.mapVoteWinner = null;
+    this.previousParameters = [];
+    this.adminTriggeringPoolGen = { admin: null }
+    // TODO some sort of timeout may be required here, since the new factions are not actually stored correctly until about 60 seconds seconds into the match, when the staging phase starts.
+    this.mapPool = await this.generatePoolFromParameters();
+  }
+
+  async parseCuratedList(rawData, delimiter){
+    const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
+    let lines = rawData.split('\n');
+    lines = lines.slice(1)
+
+    const parsedLayers = []
+    for (let line of lines) {
+      try {
         line = line.trim();
         if (regex.test(line)) {
           line = line.split(delimiter);
@@ -240,10 +252,22 @@ export default class TTCustomVote extends DiscordBasePlugin {
             faction2: line[5],
             subfaction2: line[6]
           };
-
-          layers.push(layer);
+        parsedLayers.push(layer);
         }
+
+      } catch (err) {
+        this.verbose(3, 'Something went wrong when parsing a line in the layer parser:')
+        this.verbose(3, err)
       }
+    }
+    return parsedLayers
+  }
+
+  async loadLayerListFromDisk(path) {
+    let layers = []
+    try {
+      const data = fs.readFileSync(path, 'utf-8');
+      layers = this.parseCuratedList(data, this.options.csvDelimiter)
     } catch (err) {
       this.verbose(1, 'Error occured when loading the layers file');
       this.verbose(2, err);
@@ -252,11 +276,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
     return layers;
   }
 
-  async onNewGame(info) {
-    this.mapVoteWinner = null;
-    this.mapPool = await this.generatePoolFromParameters();
-    this.previousParameters = [];
-    this.adminTriggeringPoolGen = null;
+  async loadLayerListFromWebEndpoint(address, delimiter) {
+    let layers = []
   }
 
   async onChatMessage(info) {
