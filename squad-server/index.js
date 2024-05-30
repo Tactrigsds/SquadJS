@@ -3,14 +3,14 @@ import EventEmitter from 'events';
 import axios from 'axios';
 
 import Logger from 'core/logger';
-import { SQUADJS_API_DOMAIN } from 'core/constants';
+import {SQUADJS_API_DOMAIN} from 'core/constants';
 
-import { Layers } from './layers/index.js';
+import {Layers} from './layers/index.js';
 
 import LogParser from './log-parser/index.js';
 import Rcon from './rcon.js';
 
-import { SQUADJS_VERSION } from './utils/constants.js';
+import {SQUADJS_VERSION} from './utils/constants.js';
 
 import fetchAdminLists from './utils/admin-lists.js';
 
@@ -512,7 +512,6 @@ export default class SquadServer extends EventEmitter {
       Logger.verbose('SquadServer', 3, `Server information raw data`, rawData);
       const data = JSON.parse(rawData);
       Logger.verbose('SquadServer', 2, `Server information data`, JSON.data);
-
       const info = {
         raw: data,
         serverName: data.ServerName_s,
@@ -553,6 +552,8 @@ export default class SquadServer extends EventEmitter {
       this.matchTimeout = info.matchTimeout;
       this.matchStartTime = info.matchStartTime;
       this.gameVersion = info.gameVersion;
+      this.teamOne = info.teamOne
+      this.teamTwo = info.teamTwo
 
       if (!this.currentLayer) this.currentLayer = Layers.getLayerByClassname(info.currentLayer);
       if (!this.nextLayer) this.nextLayer = Layers.getLayerByClassname(info.nextLayer);
@@ -687,32 +688,31 @@ export default class SquadServer extends EventEmitter {
     this.pingSquadJSAPITimeout = setTimeout(this.pingSquadJSAPI, this.pingSquadJSAPIInterval);
   }
 
-  getMatchStartTimeByPlaytime(playtime) {
-    return new Date(Date.now() - +playtime * 1000);
+
+
+  /*
+  We will consider Jensen's test range the start of a session. Designed in conjunction with the "persistent history plugin".
+  Will NOT function properly without the match history being grabbed from that plugin.
+   */
+  getMatchHistorySinceSessionStart() {
+    const jensens = 'jensen'
+    const matchHistory = this.matchHistoryNew
+
+    let sessionStartIndex = 0
+    for (let i = 0; i < matchHistory.length; i++) {
+      const map = matchHistory[i].layerClassname.toLowerCase().trim().replace(" ", "");
+
+      if (map.includes(jensens)) {
+        sessionStartIndex = i
+        break
+      }
+    }
+    return matchHistory.slice(0, sessionStartIndex)
   }
 
-  async constructPartialLayer() {
-    Logger.verbose('SquadServer', 1, `Constructing Partial Layer...`);
-    try {
-      const rconData = await this.rcon.getCurrentMap();
-      const gamedigData = await Gamedig.query({
-        type: 'squad',
-        host: this.options.host,
-        port: this.options.queryPort
-      });
 
-      const layer = {
-        name: rconData.layer, // "Al Basrah AAS V1"
-        layerid: gamedigData.map, // "Al_Basrah_AAS_V1"
-        map: {
-          name: rconData.level // "Al Basrah"
-        },
-        gamemode: gamedigData.raw.rules.GameMode_s // "AAS"
-      };
-      return layer;
-    } catch (err) {
-      Logger.verbose('SquadServer', 1, `Failed to Construct Partial Layer`, err);
-    }
+  getMatchStartTimeByPlaytime(playtime) {
+    return new Date(Date.now() - +playtime * 1000);
   }
 
   async warnAllAdmins(message) {
