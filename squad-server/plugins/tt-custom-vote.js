@@ -177,8 +177,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
       this.onNewGame = this.onNewGame.bind(this);
       this.onChatMessage = this.onChatMessage.bind(this);
-      this.sendCuratedPool = this.sendCuratedPool.bind(this);
-      this.loadLayerList = this.loadLayerList.bind(this);
+      this.sendCurrentPool = this.sendCurrentPool.bind(this);
+      this.loadLayerListFromDisk = this.loadLayerListFromDisk.bind(this);
       this.generatePoolFromParameters = this.generatePoolFromParameters.bind(this);
       this.tallyVotes = this.tallyVotes.bind(this);
       this.callVote = this.callVote.bind(this);
@@ -406,7 +406,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
         try {
           this.mapPool = await this.generatePoolFromParameters(splitMessage, playerInfo);
           const message = `Newly generated map pool, triggered by admin.`;
-          await this.sendCuratedPool(playerInfo, message);
+          await this.sendCurrentPool(playerInfo, message);
         } catch (err) {
           await this.server.rcon.warn(playerInfo.steamID, 'Something went wrong when ');
           this.verbose(1, 'Error occured when sending pool.');
@@ -456,7 +456,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
           'The winner of the vote has been set: \n' + `${this.mapVoteWinner.level}`
         );
       } else if (this.options.readPoolCommands.includes(splitMessage[0])) {
-        await this.sendCuratedPool(playerInfo, 'Current Map Pool:');
+        await this.sendCurrentPool(playerInfo, 'Current Map Pool:');
       } else if (splitMessage[0] === this.options.setNextFromPoolCommand) {
         this.verbose(3, 'Set Next Command Triggered');
         if (!(splitMessage.length === 2)) {
@@ -509,12 +509,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
         const tempParameters = this.previousParameters;
         tempParameters.unshift('idk');
         this.mapPool = await this.generatePoolFromParameters(tempParameters, playerInfo);
-        await this.sendCuratedPool(playerInfo, `Rerolled map pool with previous parameters:`);
+        await this.sendCurrentPool(playerInfo, `Rerolled map pool with previous parameters:`);
       }
     }
   }
 
-  async sendCuratedPool(playerInfo, preMessage) {
+  async sendCurrentPool(playerInfo, preMessage) {
     // TODO include information like the admin that triggered a pool generation and which parameters, if any, were passed.
     if (!this.server.curatedLayerList) {
       this.verbose(1, 'Curated layer list not loaded properly');
