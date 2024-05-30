@@ -206,4 +206,8 @@ export default class SquadRcon extends Rcon {
   async switchTeam(steamID) {
     await this.execute(`AdminForceTeamChange "${steamID}"`);
   }
+
+  async setNextLayer(command) {
+    await this.execute(`AdminSetNextLayer ${command}`)
+  }
 }
