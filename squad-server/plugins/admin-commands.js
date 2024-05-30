@@ -475,14 +475,19 @@ export default class AdminCommands extends DiscordBasePlugin {
 
   async listRecentMatchDataLong(playerInfo) {
     const mapsToSendCount = 6
-    const matchHistory = this.server.matchHistoryNew.slice(1)
-    const warns = []
+    let matchHistory = this.server.getMatchHistorySinceSessionStart()
     if (!matchHistory || !matchHistory.length) {
       await this.server.rcon.warn(playerInfo.steamID, 'Match history is empty. SquadJS was most likely unable to contact the database.')
       return;
     }
 
+    matchHistory = matchHistory.slice(1)
+    if (!matchHistory.length) {
+      await this.server.rcon.warn(playerInfo.steamID, `No games stored in the current session, last map was most likely Jensens Range`)
+    }
 
+
+    const warns = []
     let message = `Match data from the last ${mapsToSendCount} rounds: \n\n`
 
     for (let i = 0; i < matchHistory.length && i < mapsToSendCount; ++i) {
@@ -547,11 +552,17 @@ export default class AdminCommands extends DiscordBasePlugin {
 
   async listRecentMatchDataShort(playerInfo) {
     const mapsToSendCount = 6
-    const matchHistory = this.server.matchHistoryNew.slice(1)
+    // const matchHistory = this.server.matchHistoryNew.slice(1)
+    let matchHistory = this.server.getMatchHistorySinceSessionStart()
     const warns = []
     if (!matchHistory || !matchHistory.length) {
       await this.server.rcon.warn(playerInfo.steamID, 'Match history is empty. SquadJS was most likely unable to contact the database.')
       return;
+    }
+
+    matchHistory = matchHistory.slice(1)
+    if (!matchHistory.length) {
+      await this.server.rcon.warn(playerInfo.steamID, `No games stored in the current session, last map was most likely Jensens Range`)
     }
 
 
