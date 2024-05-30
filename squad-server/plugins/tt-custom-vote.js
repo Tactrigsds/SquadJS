@@ -5,18 +5,8 @@ import  { factions, getSubfaction, subfactionAbbreviations } from '../utils/subf
 
 /*
 KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
-
-Issues:
-Currently no ability to choose whether the subfactions will be random, assymetrical, symmetrical
-The recent history does not work together with the new database system.
-
-// TODO change !reroll so instead it rolls the pool but with the same parameters as before.
-
-Options for subfactions:
-
-Assymetrical(assym), random/any, and symmetrical(symm)
-
-If there is a tie in the map vote, then currently the first pick is automatically set to the next map.
+// TODO If there is a tie in the map vote, then currently the first pick is automatically set to the next map.
+// TODO change it so the factions played can have different modes, like a faction can be played recently, but no team can play the same faction after another etc.
 
 
  */
@@ -31,6 +21,12 @@ const MAP_SIZES_ENUM = Object.freeze({
   SMALL: 'small',
   MEDIUM: 'medium',
   LARGE: 'large'
+});
+
+const SUBFACTION_SYMMETRY_ENUM = Object.freeze({
+  SYMMETRICAL: 'symmetrical',
+  ASSYMMETRICAL: 'assymetrical',
+  RANDOM: 'random'
 });
 
 export default class TTCustomVote extends DiscordBasePlugin {
@@ -564,11 +560,15 @@ export default class TTCustomVote extends DiscordBasePlugin {
   }
 
   getLevelFromMapList(message) {
+    let foundMap = null;
+
     for (const map of this.options.mapList) {
       if (map.shorthands.includes(message)) {
-        return map;
+        foundMap = map
+        break
       }
     }
+    return foundMap;
   }
 
   checkIfLayerIsRecentlyPlayed(layer, recentMatches) {
@@ -585,12 +585,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
   // Generates the pool of maps from the paramaters given to the command. For ex. !genpool Narva Mutaha Yehorivka will generate a pool of those maps
   async generatePoolFromParameters(splitMessage = [], playerInfo = null, timeout = false) {
-    function createMapOption(map, mapIdentifiers, symmetrical, gameMode) {
-      return { map, mapIdentifiers, symmetrical, gameMode };
+    function createMapOption(map, mapIdentifiers, symmetryOption, gameMode) {
+      return { map, mapIdentifiers, symmetryOption, gameMode };
     }
 
-    function createBaseFilterOption(symmetrical, mapSize, gameMode) {
-      return { symmetrical, mapSize, gameMode };
+    function createBaseFilterOption(symmetryOption, mapSize, gameMode) {
+      return { symmetryOption, mapSize, gameMode };
     }
 
     function getGameMode(layer) {
@@ -600,7 +600,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
 
     // TODO include a faction vs faction filter at some point?
-    function filterLayers(layers, map, symmetricalFilter, gameModeFilter, mapSizeFilter) {
+    function filterLayers(layers, map, symmetryFilter, gameModeFilter, mapSizeFilter) {
       if (map) {
         layers = layers.filter(layer => {
           const potentialMap = layer?.level.replace(' ', '').toLowerCase();
@@ -608,11 +608,18 @@ export default class TTCustomVote extends DiscordBasePlugin {
           return potentialMap.includes(trimmedOption);
         });
       }
-      if (symmetricalFilter) {
+
+      if (symmetryFilter === SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL) {
         layers = layers.filter(layer => {
-          return layer.subfaction1?.toLowerCase() === layer.subfaction2?.toLowerCase();
-        });
+          return hasSymmetricalSubfactions(layer)
+          });
       }
+      else if (symmetryFilter === SUBFACTION_SYMMETRY_ENUM.ASSYMMETRICAL) {
+        layers = layers.filter(layer => {
+          return !hasSymmetricalSubfactions(layer)
+        })
+      }
+
       if (gameModeFilter) {
         layers = layers.filter(layer => getGameMode(layer)?.toLowerCase() === gameModeFilter.toLowerCase());
       }
@@ -630,17 +637,16 @@ export default class TTCustomVote extends DiscordBasePlugin {
     const mapSizes = ['small', 'medium', 'large'];
     const gameModes = ['aas', 'raas', 'invasion', 'tc', 'insurgency', 'demolition'];
     const symmetricalIdentifiers = this.options.symmetricalFlagIdentifiers;
-    const asymmetricalIdentifiers = ['asymm', 'assymetrical', 'asymm'];
-    const anyFactionMatchup = ['any', 'random'];
+    const assymmetricalIdentifiers = ['asymm', 'assymetrical', 'asymm'];
+    const anySubfactionIdentifiers = ['any', 'random'];
 
     // TODO improve the handling for the various flags and filters.
 
     this.verbose(1, 'Generating map pool');
     const desiredMaps = [];
-    const globalFilters = { symmetrical: false, mapSize: '', gameMode: '' };
+    const globalFilters = { symmetrical: false, mapSize: '', gameMode: '', subfactionSymmetry: null };
     const messages = splitMessage.map((message) => message.toLowerCase().trim());
     const parameters = messages.slice(1);
-    // TODO add global factions to this array.
     const globalFactions = [];
     const validParameters = [];
     const invalidParameters = [];
@@ -665,22 +671,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       };
     });
 
-
-
-    function checkIfMapHasFaction(input) {
-      let foundFaction = null
-
-      factions.forEach((key, value) => {
-        if (key?.toLowerCase().trim() === input?.toLowerCase().trim()) {
-          foundFaction = { short: key, long: value }
-          return
-        }
-      })
-      return foundFaction
-    }
-    
-
-    // We perform the parameter filtering here.
+    // Parse the parameters here
     // We also want to keep track of parameters that were invalid or redundant so we can warn the user of them.
     for (const parameter of parameters) {
       this.verbose(2, `Parameter: ${parameter}`);
@@ -697,13 +688,30 @@ export default class TTCustomVote extends DiscordBasePlugin {
       } else if (mapSizes.includes(parameter) && desiredMapSizes.length < this.mapPoolSize) {
         desiredMapSizes.push(parameter);
         validParameters.push(parameter);
-      } else if (gameModes.includes(parameter) && !globalFilters.gameMode) {
+
+      }
+      else if (gameModes.includes(parameter) && !globalFilters.gameMode) {
         globalFilters.gameMode = parameter;
         validParameters.push(parameter);
-      } else if (symmetricalIdentifiers.includes(parameter) && !globalFilters.symmetrical) {
-        // } else if (symmetricalIdentifiers.includes(parameter)) { // Changed the condition here
-        globalFilters.symmetrical = true;
-        validParameters.push(parameter);
+
+      }
+      else if (!globalFilters.subfactionSymmetry) {
+
+        if (symmetricalIdentifiers.includes(parameter)) {
+          globalFilters.subfactionSymmetry = SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL
+          validParameters.push(parameter);
+        }
+        else if (assymmetricalIdentifiers.includes(parameter)) {
+          globalFilters.subfactionSymmetry = SUBFACTION_SYMMETRY_ENUM.ASSYMMETRICAL
+          validParameters.push(parameter)
+        }
+        else if (anySubfactionIdentifiers.includes(parameter)) {
+          globalFilters.subfactionSymmetry = SUBFACTION_SYMMETRY_ENUM.RANDOM
+          validParameters.push(parameter)
+        }
+        else {
+          invalidParameters.push(parameter);
+        }
       } else {
         invalidParameters.push(parameter);
       }
@@ -718,6 +726,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
 
     this.previousParameters = validParameters;
+    if (!globalFilters.subfactionSymmetry) {
+      globalFilters.subfactionSymmetry = SUBFACTION_SYMMETRY_ENUM.RANDOM
+    }
 
     if (desiredMapSizes.length === 1) {
       globalFilters.mapSize = desiredMapSizes[0];
@@ -735,12 +746,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
       for (let i = 0; i < this.mapPoolSize; i++) {
         tempSizes.push(getRandomMapSize());
       }
-      const symmPickInt = getRandomInt(0, this.mapPoolSize - 1);
-      const symmRandomSize = tempSizes[symmPickInt];
-      tempSizes.splice(symmPickInt, 1);
-      filterOptions.push(createBaseFilterOption(false, symmRandomSize, 'raas'));
+      const randomInt = getRandomInt(0, this.mapPoolSize - 1);
+      const randomSize = tempSizes[randomInt];
+      tempSizes.splice(randomInt, 1);
+      filterOptions.push(createBaseFilterOption(SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL, randomSize, 'raas'));
       for (const size of tempSizes) {
-        filterOptions.push(createBaseFilterOption(true, size, 'raas'));
+        filterOptions.push(createBaseFilterOption(SUBFACTION_SYMMETRY_ENUM.RANDOM, size, 'raas'));
       }
       this.verbose(3, `Default parameters filter options per map: ${filterOptions}`);
     }
@@ -753,7 +764,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       createMapOption(
         layer.name,
         layer.identifiers,
-        globalFilters.symmetrical,
+        globalFilters.subfactionSymmetry,
         globalFilters.gameMode
       )
     );
@@ -765,9 +776,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
       const filteredMaps = filterLayers(
         allLayers,
         option.map,
-        option.symmetrical,
+        option.symmetryOption,
         option.gameMode,
-        ''
+        null
       );
 
 
@@ -789,8 +800,6 @@ export default class TTCustomVote extends DiscordBasePlugin {
       }
     }
 
-
-
     if (currentMapPool.length >= this.mapPoolSize) {
       return currentMapPool.slice(0, this.mapPoolSize);
     }
@@ -798,13 +807,15 @@ export default class TTCustomVote extends DiscordBasePlugin {
     // Generate any missing filter options.
     for (let i = currentMapPool.length + filterOptions.length; i < this.mapPoolSize; i++) {
       let mapSize;
-      if (!globalFilters.mapSize) {
-        mapSize = getRandomMapSize();
-      } else {
+      if (globalFilters.mapSize) {
         mapSize = globalFilters.mapSize;
+      } else if (desiredMapSizes) {
+        mapSize = desiredMapSizes.shift()
+      } else {
+        mapSize = getRandomMapSize();
       }
       const option = createBaseFilterOption(
-        globalFilters.symmetrical,
+        globalFilters.subfactionSymmetry,
         mapSize,
         globalFilters.gameMode
       );
@@ -816,11 +827,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
     for (const option of filterOptions) {
       const filteredLayers = filterLayers(
         allLayers,
-        '',
-        option.symmetrical,
+        null,
+        option.symmetryOption,
         option.gameMode,
         option.mapSize
       );
+
       const map = this.generatePoolBase(currentMapPool, filteredLayers, recentMatches, false, 1);
       if (map && map.length > 0) {
         // Check if map is not empty before adding to mapPool
@@ -1001,9 +1013,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
   }
 }
 
+/*
+This function defines the RNG of getting each map size.
+ */
 function getRandomMapSize() {
-  const rng = getRandomInt(0, 100 - 1);
   let mapSize = '';
+  const rng = getRandomInt(0, 100 - 1);
   const upper = 40;
   const lower = 15;
 
@@ -1020,3 +1035,37 @@ function getRandomMapSize() {
 function getRandomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+
+function checkIfFactionRecentPlayed() {
+
+}
+
+function getFactionFromShorthand(input, factions) {
+  let foundFaction = null
+  for (const [longName, shortName] of factions) {
+    if (shortName?.toLowerCase().trim() === input?.toLowerCase().trim()) {
+      foundFaction = { short: shortName, long: longName }
+      break
+    }
+  }
+  return foundFaction
+}
+
+function hasSymmetricalSubfactions(layer) {
+  // Tentative, likely to change.
+  // Format
+  // Level: Layer: Size: Faction_1: SubFac_1: Faction_2: SubFac_2
+  return layer?.subfaction1.toLowerCase() === layer?.subfaction2.toLowerCase();
+}
+
+function getFactionFromLongName(input, factions) {
+    let foundFaction = null
+    for (const [longName, shortName] of factions) {
+      if (longName?.toLowerCase().trim() === input?.toLowerCase().trim()) {
+        foundFaction = { short: shortName, long: longName }
+        break
+      }
+    }
+    return foundFaction
+}
+
