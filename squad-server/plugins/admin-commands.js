@@ -1,5 +1,5 @@
 import DiscordBasePlugin from './discord-base-plugin.js';
-import {factions, getSubfaction, subfactionAbbreviations} from "../utils/subfactions.js";
+import { factions, getSubfaction, subfactionAbbreviations} from "../utils/subfactions.js";
 
 export default class AdminCommands extends DiscordBasePlugin {
   static get description() {
@@ -474,34 +474,24 @@ export default class AdminCommands extends DiscordBasePlugin {
   }
 
   async listRecentMatchDataLong(playerInfo) {
-    const mapsToSendCount = 5
-    const matchHistory = this.server.layerHistoryNew
+    const mapsToSendCount = 6
+    const matchHistory = this.server.matchHistoryNew.slice(1)
     const warns = []
-    if (!matchHistory.length) {
+    if (!matchHistory || !matchHistory.length) {
       await this.server.rcon.warn(playerInfo.steamID, 'Match history is empty. SquadJS was most likely unable to contact the database.')
       return;
     }
 
 
-    let message = `Match data from the last 5 rounds: \n\n`
+    let message = `Match data from the last ${mapsToSendCount} rounds: \n\n`
 
     for (let i = 0; i < matchHistory.length && i < mapsToSendCount; ++i) {
       const data = matchHistory[i]
-      let team1 = factions.get(data.team1)
-      let team2 = factions.get(data.team2)
+      const team1 = factions.get(data.team1)
+      const team2 = factions.get(data.team2)
 
-      // let subfaction1 = data.subFactionTeam1;
-      // let subfaction2 = data.subFactionTeam2;
-      let subfaction1abb = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam1));
-      let subfaction2abb = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam2));
-      let subfaction1 = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam1));
-      let subfaction2 = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam2));
-
-
-      // console.log(data.layerClassname)
-      // console.log(team1 + ":" + subfaction1)
-      // console.log(team2 + ":" + subfaction2)
-
+      const subfaction1 = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam1));
+      const subfaction2 = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam2));
 
       const winnerTeam = factions.get(data.winnerTeam)
       const endTime = data.endTime
@@ -536,10 +526,6 @@ export default class AdminCommands extends DiscordBasePlugin {
 
       }
       message += `\n\n`
-      // message += `Match End time: ${serverTime}`
-      // message += `Match End time: ${localHours}:${localMinutes}`
-
-      // message += `\n\n`
 
       if (i % 2 === 0) {
         warns.push(message)
@@ -560,22 +546,22 @@ export default class AdminCommands extends DiscordBasePlugin {
   }
 
   async listRecentMatchDataShort(playerInfo) {
-    const mapsToSendCount = 5
-    const matchHistory = this.server.layerHistoryNew
+    const mapsToSendCount = 6
+    const matchHistory = this.server.matchHistoryNew.slice(1)
     const warns = []
-    if (!matchHistory.length) {
+    if (!matchHistory || !matchHistory.length) {
       await this.server.rcon.warn(playerInfo.steamID, 'Match history is empty. SquadJS was most likely unable to contact the database.')
       return;
     }
 
 
-    let message = `Match data from the last 5 rounds: \n\n`
+    let message = `Match data from the last ${mapsToSendCount} rounds: \n\n`
 
     for (let i = 0; i < matchHistory.length && i < mapsToSendCount; ++i) {
       const data = matchHistory[i]
       const endTime = data.endTime
-      const localHours = endTime.getHours().toString().padStart(2, '0')
-      const localMinutes = endTime.getMinutes().toString().padStart(2, '0')
+      const localHours = endTime?.getHours()?.toString().padStart(2, '0')
+      const localMinutes = endTime?.getMinutes()?.toString().padStart(2, '0')
       // const localDate = endTime.getDate()
       // const localMonth = endTime.getMonth()
       // const localMonth = endTime.getMonth()
@@ -585,7 +571,9 @@ export default class AdminCommands extends DiscordBasePlugin {
       message += `${i+1}.  `
       message += `${data.layerClassname}\n`
       // message += `\n`
-      message += `Match End time: ${localHours}:${localMinutes} EST`
+      if (endTime) {
+        message += `Match End time: ${localHours}:${localMinutes} - UTC`
+      }
       message += `\n\n`
 
       if (i % 2 === 0) {
