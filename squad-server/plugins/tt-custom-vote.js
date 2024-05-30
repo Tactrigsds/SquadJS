@@ -280,14 +280,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
     let layers = []
   }
 
-  async onChatMessage(info) {
-    // eslint-disable-next-line no-unused-vars
-    const adminChat = 'ChatAdmin';
-    // eslint-disable-next-line no-unused-vars
-    const commands = [];
-    this.info = info;
-
-    // EXIT IF VOTE IN PROGRESS
+  async handleVoteMessages(info) {
     if (
       this.voteInProgress &&
       (info.message.toLowerCase().startsWith('!vote') ||
@@ -362,6 +355,20 @@ export default class TTCustomVote extends DiscordBasePlugin {
       }
       this.callVote(this.voteOptions);
     }
+  }
+
+  /*
+  Takes in the info from a chat message event, primarily handles admin commands or votes.
+   */
+  async onChatMessage(info) {
+    // eslint-disable-next-line no-unused-vars
+    const adminChat = 'ChatAdmin';
+    // eslint-disable-next-line no-unused-vars
+    const commands = [];
+    this.info = info;
+
+    // TODO use the handle vote message function once ready for testing.
+    await this.handleVoteMessages(info)
 
     const playerInfo = await this.server.getPlayerBySteamID(info.steamID);
     const splitMessage = info.message.toLowerCase().split(' ');
