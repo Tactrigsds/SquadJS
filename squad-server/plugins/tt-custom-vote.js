@@ -2,6 +2,7 @@ import DiscordBasePlugin from "./discord-base-plugin.js";
 
 import fs from 'fs';
 import  { factions, getSubfaction, subfactionAbbreviations } from '../utils/subfactions.js'
+import axios from "axios";
 
 /*
 KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
@@ -197,17 +198,24 @@ export default class TTCustomVote extends DiscordBasePlugin {
     this.verbose(2, 'Mounted');
     this.server.on('CHAT_MESSAGE', this.onChatMessage);
     this.server.on('NEW_GAME', this.onNewGame);
-    this.server.curatedLayerList = await this.loadLayerListFromDisk(this.options.curatedLayerListPath);
     this.mapPool = [];
-      this.mapPool = await this.generatePoolFromParameters([], null, true);
-      this.poolGenerationTime = new Date(0);
+    this.server.curatedLayerList = []
     try {
+      if (this.options.useWebEndpoint.enabled) {
+        this.server.curatedLayerList = await this.loadLayerListFromWebEndpoint(this.options.useWebEndpoint.endpoint)
+      }
+
+      if (!this.server.curatedLayerList?.length) {
+        this.server.curatedLayerList = await this.loadLayerListFromDisk(this.options.curatedLayerListPath);
+      }
+
     } catch (err) {
       this.verbose(1, 'Unable to generate map pool.');
       this.verbose(1, err);
     }
     this.verbose(3, 'Loaded layers: ' + this.options.curatedLayerListPath);
     // TODO make a function that converts the pool into a "printable" format.
+    this.mapPool = await this.generatePoolFromParameters([], null, true);
     this.verbose(3, 'Curated pool on mount: ' + this.mapPool);
   }
 
@@ -227,7 +235,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
   async parseCuratedList(rawData, delimiter){
     const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
-    let lines = rawData.split('\n');
+    let lines = rawData.split(/\r?\n/);
     lines = lines.slice(1)
 
     const parsedLayers = []
@@ -239,7 +247,6 @@ export default class TTCustomVote extends DiscordBasePlugin {
           for (let i = 0; i < line.length; i++) {
             line[i] = line[i].trim();
           }
-
           const layer = {
             level: line[0],
             layer: line[1],
@@ -260,11 +267,17 @@ export default class TTCustomVote extends DiscordBasePlugin {
     return parsedLayers
   }
 
+  /**
+   * Utility function that loads the layer list from disk.
+   * @param path File path to the csv data that is to be loaded.
+   * @returns {Promise<*[]>}
+   */
+
   async loadLayerListFromDisk(path) {
     let layers = []
     try {
       const data = fs.readFileSync(path, 'utf-8');
-      layers = this.parseCuratedList(data, this.options.csvDelimiter)
+      layers = await this.parseCuratedList(data, this.options.csvDelimiter)
     } catch (err) {
       this.verbose(1, 'Error occured when loading the layers file');
       this.verbose(2, err);
@@ -273,8 +286,17 @@ export default class TTCustomVote extends DiscordBasePlugin {
     return layers;
   }
 
-  async loadLayerListFromWebEndpoint(address, delimiter) {
+  /**
+   *
+   * @returns {Promise<*[]>}
+   */
+  async loadLayerListFromWebEndpoint() {
     let layers = []
+    const response = await axios.get(this.options.useWebEndpoint.endpoint)
+    if (response) {
+      layers = this.parseCuratedList(response.data, this.options.csvDelimiter)
+    }
+    return layers
   }
 
   async handleVoteMessages(info) {
