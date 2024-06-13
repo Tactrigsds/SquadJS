@@ -30,7 +30,7 @@ export default class SquadServer extends EventEmitter {
     this.options = options;
     this.warnMessageCharLimit = 215
     this.serverBroadcastCharLimit = 200
-    this.warnMessagePersistenceTimeSeconds = 6100
+    this.warnMessagePersistenceTimeMilliSeconds = 6100
     this.matchHistory = []
     this.layerHistory = [];
     this.matchHistoryNew = []
