@@ -447,7 +447,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
           return;
         }
 
-        const currentTime = new Date();
+        const currentTime = Date.now();
         // This is here, so I can comment out the time check during testing without getting errors.
         // eslint-disable-next-line no-unused-vars
         const timeSinceLastPoolGen = currentTime - this.poolGenerationTime;
@@ -724,7 +724,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.verbose(2, `Parameter: ${parameter}`);
       const level = this.getLevelFromMapList(parameter);
       const faction = getFactionFromShorthand(parameter, factions);
-      if (level && !desiredMaps.includes(level) && desiredMaps.length < this.mapPoolSize) {
+      if (level && desiredMaps.length < this.mapPoolSize) {
         desiredMaps.push(level);
         validParameters.push(parameter);
 
@@ -840,7 +840,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       }
 
       // TODO discuss whether this part should take past layers into consideration.
-      const map = this.generatePoolBase(currentMapPool, filteredMaps, recentMatches, true, 1, false);
+      const map = this.generatePoolBase(currentMapPool, filteredMaps, recentMatches, true, POOL_DUPLICATE_FILTERS_ENUM.ALLOW_DUPLICATE_LAYERS, false, 1);
       if (map && map.length > 0) {
         currentMapPool.push(map[0]);
       }
@@ -879,9 +879,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
         option.mapSize
       );
 
-      const map = this.generatePoolBase(currentMapPool, filteredLayers, recentMatches, false, 1);
+      const map = this.generatePoolBase(currentMapPool, filteredLayers, recentMatches, false, POOL_DUPLICATE_FILTERS_ENUM.ALLOW_NO_DUPLICATES, false, 1);
+      // Check if map is not empty before adding to mapPool
       if (map && map.length > 0) {
-        // Check if map is not empty before adding to mapPool
         currentMapPool.push(map[0]);
       }
     }
@@ -901,8 +901,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
       allLayers,
       recentMatches,
       false,
-      this.mapPoolSize - currentMapPool.length,
-      false
+      POOL_DUPLICATE_FILTERS_ENUM.ALLOW_NO_DUPLICATES,
+      false,
+      this.mapPoolSize - currentMapPool.length
     );
     if (temp.length) {
       currentMapPool.push(...temp);
@@ -912,20 +913,35 @@ export default class TTCustomVote extends DiscordBasePlugin {
     return currentMapPool.slice(0, this.mapPoolSize);
   }
 
-  generatePoolBase(existingPool = [],
+  /**
+   *
+   * @param existingPool An array of the existing pool, if applicable.
+   * @param filteredLayers
+   * @param matchHistory
+   * @param allowRecentlyPlayedMaps
+   * @param allowDuplicateMapsLayers
+   * @param poolLength
+   * @param allowRecentFactions
+   * @returns {*[]}
+   */
+  generatePoolBase(
+    existingPool,
     filteredLayers,
     matchHistory,
-    allowRecentlyPlayed,
-    poolLength,
+    allowRecentlyPlayedMaps,
+    allowDuplicateMapsLayers,
     allowRecentFactions = false,
+    poolLength,
   ) {
     const newPool = [];
-
-    if (!allowRecentlyPlayed) {
-      filteredLayers = filteredLayers.filter(
-        (layer) => !this.checkIfMapIsRecentlyPlayed(layer, matchHistory)
-      );
+    if (!existingPool) {
+      existingPool = []
     }
+
+    if (!allowRecentlyPlayedMaps) {
+      filteredLayers = filteredLayers.filter(layer => !checkIfMapIsRecentlyPlayed(layer, matchHistory));
+    }
+
 
     if (!allowRecentFactions) {
       // We need to normalize the recent history as well as the current match so that it fits with the format that we take in the layers with.
@@ -975,12 +991,24 @@ export default class TTCustomVote extends DiscordBasePlugin {
     while (filteredLayers.length && newPool.length < poolLength) {
       const candidateInt = getRandomInt(0, filteredLayers.length - 1);
       const candidatePick = filteredLayers[candidateInt];
-      if (
-        existingPool.some(pick => pick.level === candidatePick.level) ||
-        newPool.some(pick => pick.level === candidatePick.level)
-      ) {
-        filteredLayers.splice(candidateInt, 1);
-        continue;
+
+      /*
+      Check if a candidate pick is already in the existing or the new pool if
+       */
+      if (allowDuplicateMapsLayers === POOL_DUPLICATE_FILTERS_ENUM.ALLOW_DUPLICATE_MAPS) {
+        if (existingPool.some(pick => pick.layer === candidatePick.layer) ||
+            newPool.some(pick => pick.layer === candidatePick.layer)) {
+          filteredLayers.splice(candidateInt, 1);
+          continue;
+        }
+      }
+
+      else if(allowDuplicateMapsLayers === POOL_DUPLICATE_FILTERS_ENUM.ALLOW_NO_DUPLICATES) {
+        if (existingPool.some(pick => pick.level === candidatePick.level) ||
+            newPool.some(pick => pick.level === candidatePick.level)) {
+          filteredLayers.splice(candidateInt, 1);
+          continue;
+        }
       }
 
       newPool.push(candidatePick);
