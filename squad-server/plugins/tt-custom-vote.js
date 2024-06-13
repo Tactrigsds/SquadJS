@@ -958,11 +958,10 @@ export default class TTCustomVote extends DiscordBasePlugin {
       const currentSubfaction1 = currentFaction1[2]
       const currentSubfaction2 = currentFaction2[2]
 
-      history.push( {layer: matchHistory[0].layer, faction1: currentFactionShort1, faction2: currentFactionShort2, subfaction1: currentSubfaction1, subfaction2: currentSubfaction2})
+      history.push( {layer: matchHistory[0]?.layer, faction1: currentFactionShort1, faction2: currentFactionShort2, subfaction1: currentSubfaction1, subfaction2: currentSubfaction2})
       recentMatches.forEach(match => {
-        // If there is a field for team 1, there will also be a field for team 2, so we don't need to check both.
         if (match.faction1 && match.subfaction1 && match.faction2 && match.subfaction2) {
-          history.push( {layer: match.layer, faction1: getFactionFromLongName(match.faction1, factions)?.short, faction2: getFactionFromLongName(match.faction2, factions)?.short, subfaction1: getSubfaction(match.subfaction1), subfaction2: getSubfaction(match.subfaction2)} )
+          history.push( {layer: match?.layer, faction1: getFactionFromLongName(match.faction1, factions)?.short, faction2: getFactionFromLongName(match.faction2, factions)?.short, subfaction1: getSubfaction(match.subfaction1), subfaction2: getSubfaction(match.subfaction2)} )
         }
       })
 
@@ -973,13 +972,30 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
       // TODO get a filter/check to see if a team has played any of the PLA variant recently? Should discuss policy on this.
       filteredLayers = filteredLayers.filter(layer => {
-        let factionNotRecentlyPlayed = true
-        for (const match of history) {
-          if (layer.faction1 === match.faction1 || layer.faction1 === match.faction2 || layer.faction2 === match.faction2 || layer.faction1 === match.faction2) {
-            factionNotRecentlyPlayed = false
+        let allowedPick = true
+        /*
+        Disallows identical factions matchups right after one another.
+         */
+        if ((history[0].faction1 === layer.faction1 && history[0].faction2 === layer.faction2) ||
+          history[0].faction2 === layer.faction1 && history[0].faction1 === layer.faction2) {
+          return false
+        }
+        /*
+        Disallows teams from playing the exact same factions right after one anothers
+         */
+        if (history[0].faction1 === layer.faction2 || history[0].faction2 === layer.faction1) {
+          return false
+        }
+        /*
+        Disallow any team from playing the same team right after one another.
+         */
+        if (history.length >= 2) {
+          if (history[1].faction1 === layer.faction1 || history[1].faction2 === layer.faction2) {
+            return false
           }
         }
-        return factionNotRecentlyPlayed
+
+        return allowedPick
       })
     }
 
