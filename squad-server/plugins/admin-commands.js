@@ -1,5 +1,5 @@
 import DiscordBasePlugin from './discord-base-plugin.js';
-import { factions, getSubfaction, subfactionAbbreviations} from "../utils/subfactions.js";
+import { factions, getSubfaction, subfactionAbbreviations} from "../utils/faction-constants.js";
 
 export default class AdminCommands extends DiscordBasePlugin {
   static get description() {
@@ -458,16 +458,6 @@ export default class AdminCommands extends DiscordBasePlugin {
         await this.listRecentMatchDataLong(playerInfo)
         break
 
-      case '!shownext':
-        let message;
-        if (this.server.nextFactions && this.server.nextLayerAlt) {
-          message = `Next layer: ${this.server.nextLayerAlt} \n`
-          message += `Factions: ${this.server.nextFactions}`
-        } else {
-          message = `The next map has either not been manually set by admins this round, SquadJS crashed or was restarted during this round.`
-        }
-        await this.server.rcon.warn(playerInfo.steamID, message)
-        break;
 
       default:
     }
@@ -499,13 +489,7 @@ export default class AdminCommands extends DiscordBasePlugin {
       const subfaction2 = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam2));
 
       const winnerTeam = factions.get(data.winnerTeam)
-      const endTime = data.endTime
-      // const localHours = endTime.getHours().toString().padStart(2, '0')
-      // const localMinutes = endTime.getMinutes().toString().padStart(2, '0')
-      // const localDate = endTime.getDate()
-      // const localMonth = endTime.getMonth()
-      // const localMonth = endTime.getMonth()
-      // const localDay = endTime.getDay()
+      const endTime = new Date(+data.endTime - (60 * 60 * 4 * 1000))
 
 
       message += `${i+1}.  `
@@ -546,7 +530,7 @@ export default class AdminCommands extends DiscordBasePlugin {
       for (const warnMessage of warns) {
         await this.server.rcon.warn(playerInfo.steamID, warnMessage)
       }
-      await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeSeconds));
+      await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeMilliSeconds));
     }
   }
 
@@ -570,9 +554,10 @@ export default class AdminCommands extends DiscordBasePlugin {
 
     for (let i = 0; i < matchHistory.length && i < mapsToSendCount; ++i) {
       const data = matchHistory[i]
-      const endTime = data.endTime
-      const localHours = endTime?.getHours()?.toString().padStart(2, '0')
-      const localMinutes = endTime?.getMinutes()?.toString().padStart(2, '0')
+      const endTime = new Date(+data.endTime - (60 * 60 * 4 * 1000))
+      // let endTime = new Date(+data.endTime)
+      const estHours = endTime?.getHours()?.toString().padStart(2, '0')
+      const estMinutes = endTime?.getMinutes()?.toString().padStart(2, '0')
       // const localDate = endTime.getDate()
       // const localMonth = endTime.getMonth()
       // const localMonth = endTime.getMonth()
@@ -583,7 +568,7 @@ export default class AdminCommands extends DiscordBasePlugin {
       message += `${data.layerClassname}\n`
       // message += `\n`
       if (endTime) {
-        message += `Match End time: ${localHours}:${localMinutes} - UTC`
+        message += `Match End time: ${estHours}:${estMinutes} - EST`
       }
       message += `\n\n`
 
@@ -601,7 +586,7 @@ export default class AdminCommands extends DiscordBasePlugin {
       for (const warnMessage of warns) {
         await this.server.rcon.warn(playerInfo.steamID, warnMessage)
       }
-      await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeSeconds));
+      await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeMilliSeconds));
     }
   }
 
