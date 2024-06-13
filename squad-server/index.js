@@ -483,6 +483,9 @@ export default class SquadServer extends EventEmitter {
 
       this.currentLayer = currentLayer;
       this.nextLayer = nextLayer;
+      // TODO split these up to individual factions and subfactions.
+      this.nextLayerAlt = nextMap?.layer
+      this.nextFactions = nextMap?.factions
       this.nextLayerToBeVoted = nextMapToBeVoted;
 
       this.emit('UPDATED_LAYER_INFORMATION');
