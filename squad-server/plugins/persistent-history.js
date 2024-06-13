@@ -34,15 +34,11 @@ export default class PersistentHistory extends BasePlugin {
   }
 
 
-
   async updateLayerHistory() {
     const matches = await this.DBLogPlugin.models.Match.findAll({})
     const matchesIncludingCurrent = matches.map(match => match.dataValues)
-    // const filteredMatches = await this.filterAndSortMatches(matches)
-    // const layerHistoryClamp = Math.max(0, filteredMatches.length - this.server.layerHistoryMaxLength)
     const layerHistoryClamp = Math.max(0, matches.length - this.server.layerHistoryMaxLength)
     // We reverse the matches, so we get the most recent matches first.
-
     this.server.matchHistoryNew = matchesIncludingCurrent.slice(layerHistoryClamp).reverse()
     this.verbose(3, this.server.matchHistoryNew)
   }
@@ -59,9 +55,13 @@ export default class PersistentHistory extends BasePlugin {
 
   async onDatabaseUpdated() {
     try {
-      await this.updateLayerHistory()
-      this.verbose(1, 'Layer history updated.')
-
+      if (this.DBLogPlugin) {
+        await this.updateLayerHistory()
+        this.verbose(1, 'Layer history updated.')
+      }
+      else {
+        this.verbose(1, 'DB Plugin not loaded, unable to fetch match history from the DB.')
+      }
     }
     catch (e) {
       this.verbose(1, 'Unable to update layer history from the database...')
