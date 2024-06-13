@@ -1,5 +1,4 @@
 import DiscordBasePlugin from "./discord-base-plugin.js";
-
 import fs from 'fs';
 import { factions, getSubfaction} from '../utils/faction-constants.js'
 import axios from "axios";
@@ -139,11 +138,21 @@ export default class TTCustomVote extends DiscordBasePlugin {
       },
       useWebEndpoint: {
         required: false,
-        description: "",
+        description: "Whether the plugin should load it's layer list from a web endpoint.",
         default: {
           enabled: false,
           endpoint: ""
         }
+      },
+      balanceDifferential: {
+        required: false,
+        description: "The thresh of balance differential that's allowed for a potential layer to be in the curated list.",
+        default: 2.5
+      },
+      layerlistVersion: {
+        required: false,
+        description: "The version of the layerlist parser to use. Temporary.",
+        default: 'version2'
       }
     };
   }
@@ -217,37 +226,86 @@ export default class TTCustomVote extends DiscordBasePlugin {
     this.mapPool = await this.generatePoolFromParameters();
   }
 
-  async parseCuratedList(rawData, delimiter){
-    const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
-    let lines = rawData.split(/\r?\n/);
-    lines = lines.slice(1)
 
+
+
+
+
+  async parseCuratedList(rawData, delimiter, layerListVersion){
     const parsedLayers = []
-    for (let line of lines) {
-      try {
-        line = line.trim();
-        if (regex.test(line)) {
-          line = line.split(delimiter);
-          for (let i = 0; i < line.length; i++) {
-            line[i] = line[i].trim();
-          }
-          const layer = {
-            level: line[0],
-            layer: line[1],
-            size: line[2],
-            faction1: line[3],
-            subfaction1: line[4],
-            faction2: line[5],
-            subfaction2: line[6]
-          };
-        parsedLayers.push(layer);
-        }
+    let lines = rawData.split(/\r?\n/);
 
-      } catch (err) {
-        this.verbose(3, 'Something went wrong when parsing a line in the layer parser:')
-        this.verbose(3, err)
+    if (layerListVersion === LAYER_LIST_VERSION_ENUM.VERSION1) {
+      const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
+      lines = lines.slice(1)
+
+      for (let line of lines) {
+        try {
+          line = line.trim();
+          if (regex.test(line)) {
+            line = line.split(delimiter);
+            for (let i = 0; i < line.length; i++) {
+              line[i] = line[i].trim();
+            }
+            const layer = {
+              level: line[0],
+              layer: line[1],
+              size: line[2],
+              faction1: line[3],
+              subfaction1: line[4],
+              faction2: line[5],
+              subfaction2: line[6]
+            };
+
+          parsedLayers.push(layer);
+          }
+
+        } catch (err) {
+          this.verbose(3, 'Something went wrong when parsing a line in the layer parser:')
+          this.verbose(3, err)
+        }
       }
     }
+
+    else if (layerListVersion === LAYER_LIST_VERSION_ENUM.VERSION2) {
+      const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
+      lines = lines.slice(1).map(line => line.trim())
+      for (let line of lines) {
+        if (!regex.test(line)) {
+          continue
+        }
+
+        line = line.split(delimiter).map(line => line.trim())
+
+        const layer = {
+          level: line[0],
+          layer: line[1],
+          size: line[2],
+          faction1: line[3],
+          faction2: line[10],
+          subfaction1: line[4],
+          subfaction2: line[11],
+          logisticsScore1: parseFloat(line[5]),
+          logisticsScore2: parseFloat(line[12]),
+          transportationScore1: parseFloat(line[6]),
+          transportationScore2: parseFloat(line[13]),
+          antiInfantryScore1: parseFloat(line[7]),
+          antiInfantryScore2: parseFloat(line[14]),
+          armorScore1: parseFloat(line[8]),
+          armorScore2: parseFloat(line[15]),
+          zeroScore1: parseFloat(line[9]),
+          zeroScore2: parseFloat(line[16]),
+          balanceDifferential: parseFloat(line[17]),
+        }
+
+        if (Math.abs(layer.balanceDifferential) > this.options.balanceDifferential) {
+          continue
+        }
+
+        parsedLayers.push(layer)
+      }
+    }
+
     return parsedLayers
   }
 
@@ -261,7 +319,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
     let layers = []
     try {
       const data = fs.readFileSync(path, 'utf-8');
-      layers = await this.parseCuratedList(data, this.options.csvDelimiter)
+      layers = await this.parseCuratedList(data, this.options.csvDelimiter, this.options.layerlistVersion)
     } catch (err) {
       this.verbose(1, 'Error occured when loading the layers file');
       this.verbose(2, err);
@@ -278,7 +336,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
     let layers = []
     const response = await axios.get(this.options.useWebEndpoint.endpoint)
     if (response) {
-      layers = this.parseCuratedList(response.data, this.options.csvDelimiter)
+      layers = this.parseCuratedList(response.data, this.options.csvDelimiter, this.options.layerlistVersion)
     }
     return layers
   }
