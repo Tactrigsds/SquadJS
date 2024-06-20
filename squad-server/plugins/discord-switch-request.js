@@ -27,28 +27,16 @@ export default class DiscordAdminRequest extends DiscordBasePlugin {
         default: [],
         example: ['ChatSquad']
       },
-      ignorePhrases: {
-        required: false,
-        description: 'A list of phrases to ignore.',
-        default: [],
-        example: ['switch']
-      },
       command: {
         required: false,
-        description: 'The command that calls an admin.',
-        default: 'admin'
+        description: 'The command that calls an admin for a switch.',
+        default: 'switch'
       },
       pingGroups: {
         required: false,
         description: 'A list of Discord role IDs to ping.',
         default: [],
         example: ['500455137626554379']
-      },
-      pingHere: {
-        required: false,
-        description:
-          'Ping @here. Great if Admin Requests are posted to a Squad Admin ONLY channel, allows pinging only Online Admins.',
-        default: false
       },
       pingDelay: {
         required: false,
@@ -67,7 +55,6 @@ export default class DiscordAdminRequest extends DiscordBasePlugin {
     super(server, options, connectors);
 
     this.lastPing = Date.now() - this.options.pingDelay;
-
     this.onChatCommand = this.onChatCommand.bind(this);
   }
 
@@ -82,17 +69,17 @@ export default class DiscordAdminRequest extends DiscordBasePlugin {
   async onChatCommand(info) {
     if (this.options.ignoreChats.includes(info.chat)) return;
 
-    for (const ignorePhrase of this.options.ignorePhrases) {
-      if (info.message.includes(ignorePhrase)) return;
-    }
 
-    if (info.message.length === 0) {
-      await this.server.rcon.warn(
-        info.player.steamID,
-        `Please specify what you would like help with when requesting an admin.`
-      );
-      return;
-    }
+
+
+
+    // if (info.message.length === 0) {
+    //   await this.server.rcon.warn(
+    //     info.player.steamID,
+    //     `Please specify what you would like help with when requesting an admin.`
+    //   );
+    //   return;
+    // }
 
     const trimmedMessage = info.message.toLowerCase().replace('!', '').trim();
 
@@ -109,19 +96,7 @@ export default class DiscordAdminRequest extends DiscordBasePlugin {
     };
 
     if (this.options.pingGroups.length > 0 && Date.now() - this.options.pingDelay > this.lastPing) {
-      if (this.options.pingHere === true && this.options.pingGroups.length === 0) {
-        message.content = `@here - Admin Requested in ${this.server.serverName}`;
-      } else if (this.options.pingHere === true && this.options.pingGroups.length > 0) {
-        message.content = `@here - Admin Requested in ${
-          this.server.serverName
-        } - ${this.options.pingGroups.map((groupID) => `<@&${groupID}>`).join(' ')}`;
-      } else if (this.options.pingHere === false && this.options.pingGroups.length === 0) {
-        message.content = `Admin Requested in ${this.server.serverName}`;
-      } else if (this.options.pingHere === false && this.options.pingGroups.length > 0) {
-        message.content = `Admin Requested in ${this.server.serverName} - ${this.options.pingGroups
-          .map((groupID) => `<@&${groupID}>`)
-          .join(' ')}`;
-      }
+      message.content = this.options.pingGroups.map((groupID) => `<@&${groupID}>`).join(' ');
       this.lastPing = Date.now();
     }
 

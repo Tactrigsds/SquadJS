@@ -25,6 +25,8 @@ import LoginRequest from './login-request.js';
 import JoinRequest from './join-request.js';
 import PlayerJoinSucceeded from './player-join-succeeded.js';
 import CheckPermissionResolveEosid from './check-permission-resolve-eosid.js';
+import NextLayerSet from './next-layer-set.js';
+
 export default class SquadLogParser extends LogParser {
   constructor(options) {
     super('SquadGame.log', options);
@@ -56,7 +58,8 @@ export default class SquadLogParser extends LogParser {
       LoginRequest,
       JoinRequest,
       PlayerJoinSucceeded,
-      CheckPermissionResolveEosid
+      CheckPermissionResolveEosid,
+      NextLayerSet
     ];
   }
 }

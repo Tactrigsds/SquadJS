@@ -31,6 +31,16 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
         required: false,
         description: "Whether to update the bot's status with server information.",
         default: true
+      },
+      serverGuildID: {
+        required: false,
+        description: 'Server HQ Role resides on',
+        default: ''
+      },
+      serverRoleID: {
+        required: false,
+        description: 'HQ Role, so !status can only be used by HQ',
+        default: ''
       }
     };
   }
@@ -72,16 +82,26 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
 
     embed.addField('Players', players);
 
+    // Custom fix for if layers aren't loaded properly
+    if (this.server.currentLayer === null) {
+      this.server.currentLayer = await this.server.rcon.getCurrentMap();
+    }
+
+    if (this.server.nextLayer === null) {
+      this.server.nextLayer = await this.server.rcon.getNextMap();
+    }
+
     // Set layer embed fields.
     embed.addField(
       'Current Layer',
-      `\`\`\`${this.server.currentLayer?.name || 'Unknown'}\`\`\``,
+      `\`\`\`${this.server.currentLayer?.name || this.server.currentLayer.layer}\`\`\``,
       true
     );
     embed.addField(
       'Next Layer',
       `\`\`\`${
-        this.server.nextLayer?.name || (this.server.nextLayerToBeVoted ? 'To be voted' : 'Unknown')
+        this.server.nextLayer?.name ||
+        (this.server.nextLayerToBeVoted ? 'To be voted' : this.server.nextLayer.layer)
       }\`\`\``,
       true
     );
@@ -123,9 +143,18 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
   async updateStatus() {
     if (!this.options.setBotStatus) return;
 
+    // Custom fix for if layers aren't loaded properly
+    if (this.server.currentLayer === null) {
+      this.server.currentLayer = await this.server.rcon.getCurrentMap();
+    }
+
+    if (this.server.nextLayer === null) {
+      this.server.nextLayer = await this.server.rcon.getNextMap();
+    }
+
     await this.options.discordClient.user.setActivity(
       `(${this.server.a2sPlayerCount}/${this.server.publicSlots}) ${
-        this.server.currentLayer?.name || 'Unknown'
+        this.server.currentLayer?.name || this.server.currentLayer.layer
       }`,
       { type: 'WATCHING' }
     );

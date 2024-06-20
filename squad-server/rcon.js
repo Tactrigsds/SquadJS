@@ -118,16 +118,17 @@ export default class SquadRcon extends Rcon {
 
   async getCurrentMap() {
     const response = await this.execute('ShowCurrentMap');
-    const match = response.match(/^Current level is (.*), layer is (.*)/);
-    return { level: match[1], layer: match[2] };
+    const match = response.match(/^Current level is (.*), layer is (.*), factions (.*)/);
+    return { level: match[1], layer: match[2], factions: match[3]};
   }
 
   async getNextMap() {
     const response = await this.execute('ShowNextMap');
-    const match = response.match(/^Next level is (.*), layer is (.*)/);
+    const match = response.match(/^Next level is (.*), layer is (.*), factions (.*)/);
     return {
       level: match ? (match[1] !== '' ? match[1] : null) : null,
-      layer: match ? (match[2] !== 'To be voted' ? match[2] : null) : null
+      layer: match ? (match[2] !== 'To be voted' ? match[2] : null) : null,
+      factions: match ? (match[3] !== '' ? match[3] : null) : null
     };
   }
 
@@ -205,5 +206,9 @@ export default class SquadRcon extends Rcon {
 
   async switchTeam(steamID) {
     await this.execute(`AdminForceTeamChange "${steamID}"`);
+  }
+
+  async setNextLayer(command) {
+    await this.execute(`AdminSetNextLayer ${command}`)
   }
 }
