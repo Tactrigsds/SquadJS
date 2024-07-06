@@ -44,9 +44,10 @@ export default class DiscordFOBHABExplosionDamage extends DiscordBasePlugin {
   }
 
   async onDeployableDamaged(info) {
-    if (!info.deployable.match(/(?:FOBRadio|Hab)_/i)) return;
-    if (!info.weapon.match(/_Deployable_/i)) return;
-    if (!info.player) return;
+    if (!info.deployable.toLowerCase().match(/(?:fobradio|hab)/i)) return;
+    if (!info.weapon.toLowerCase().match(/_deployable_/i)) return;
+
+
 
     const fields = [
       {
@@ -55,8 +56,8 @@ export default class DiscordFOBHABExplosionDamage extends DiscordBasePlugin {
         inline: true
       },
       {
-        name: "Player's SteamID",
-        value: `[${info.player.steamID}](https://steamcommunity.com/profiles/${info.player.steamID})`,
+        name: 'Team',
+        value: info.player.squad?.teamName || `Unknown`,
         inline: true
       },
       {
@@ -66,15 +67,28 @@ export default class DiscordFOBHABExplosionDamage extends DiscordBasePlugin {
       {
         name: 'Weapon',
         value: info.weapon
+      },
+      {
+        name: 'Damage Done',
+        value: info.damage,
+        inline: true
+      },
+      {
+        name: 'Health Remaining',
+        value: info.healthRemaining,
+        inline: true
       }
     ];
 
     await this.sendDiscordMessage({
       embed: {
-        title: `FOB/HAB Explosion Damage: ${info.player.name}`,
+        title: 'Radio/HAB C4/IED Damage',
         color: this.options.color,
         fields: fields,
-        timestamp: info.time.toISOString()
+        timestamp: info.time.toISOString(),
+        footer: {
+          text: '!!!NOT ALWAYS FRIENDLY FIRE!!!'
+        }
       }
     });
   }
