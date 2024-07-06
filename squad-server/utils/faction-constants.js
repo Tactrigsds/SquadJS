@@ -1,14 +1,4 @@
 
-
-// const subfactions = [
-//   { name: "CombinedArms", variants: [["RGF", "49th Combined Arms Army"], ["USA", "3rd Brigade Combat Team, 1st Infantry Division"], ["ADF", "3rd Brigade Battle Group"], ["BAF", "3rd Division Battle Group"], ["CAF", "1 Canadian Mechanized Brigade Group"], ["MEA", "1st Battalion, Legion of Babylon"], ["PLA", "118th CombinedArms Brigade"]]},
-//   { name: "AirAssault", variants: ["2nd Battalion, Parachute Regiment"]},
-//   { name: "Armoured", variants: [""]},
-//   { name: "Motorized", variants: ["Irregular Motorized Platoon", ["USMC", "3rd Light Armored Recon Battalion"]]},
-//   { name: "", variants: [""]},
-// ]
-
-
 const factions = new Map([
   ["United States Army", "USA"],
   ["United States Marine Corps", "USMC"],
@@ -107,7 +97,7 @@ USMC,LightInfantry,1st Marines Regimental Combat Team
 USMC,Motorized,3rd Light Armored Recon Battalion
 `;
 
-const mapList = [
+const defaultMapList = [
   { "name": "Al Basrah", "shorthands": ["basrah", "albasrah", "al_basrah", "basra"] },
   { "name": "Anvil", "shorthands": ["anvil"] },
   { "name": "Belaya", "shorthands": ["belaya", "bel"] },
@@ -154,8 +144,11 @@ for (let i = 1; i < lines.length; i++) {
  * @returns {*|string|null} A string representing the subfaction type, null if no matches were found.
  */
 function getSubfaction(unitName) {
+
+  // TODO unwrap this and print out to console if an unknown subfaction is given, rather than just blanket assuming any string means "combinedArms"
+
   return unitToSubfaction[unitName] ? unitToSubfaction[unitName] : (unitName ? 'CombinedArms' : null);
 }
 
 
-export { factions, getSubfaction, subfactionAbbreviations }
+export { factions, getSubfaction, subfactionAbbreviations, defaultMapList }
