@@ -19,7 +19,6 @@ EventEmitter.setMaxListeners(0)
 export default class SquadServer extends EventEmitter {
 
   constructor(options = {}) {
-    // EventEmitter.setMaxListeners(25)
     super();
 
     for (const option of ['host'])
@@ -35,9 +34,13 @@ export default class SquadServer extends EventEmitter {
     this.layerHistory = [];
     this.matchHistoryNew = []
     this.layerHistoryMaxLength = options.layerHistoryMaxLength || 20;
-
+    this.nextLayerSet = true
     this.nextLayerAlt = null;
     this.nextFactions = null;
+    this.currentFactions = null;
+
+    // this.nextLayerSet = true
+
 
     this.players = [];
 
@@ -213,7 +216,7 @@ export default class SquadServer extends EventEmitter {
       data.layer = await Layers.getLayerByClassname(data.layerClassname);
       this.layerHistory.unshift({ layer: data.layer, time: data.time });
       this.layerHistory = this.layerHistory.slice(0, this.layerHistoryMaxLength);
-      this.currentLayer = data.layer;
+      this.currentLayer = await data.layer;
       await this.updateAdmins();
       this.nextLayerAlt = null;
       this.nextFactions = null;
@@ -471,10 +474,11 @@ export default class SquadServer extends EventEmitter {
     try {
       const currentMap = await this.rcon.getCurrentMap();
       const nextMap = await this.rcon.getNextMap();
-      const nextMapToBeVoted = nextMap.layer === 'To be voted';
-
-      const currentLayer = await Layers.getLayerByName(currentMap.layer);
-      const nextLayer = nextMapToBeVoted ? null : await Layers.getLayerByName(nextMap.layer);
+      this.currentMap = currentMap
+      this.nextMap = nextMap
+      const nextMapToBeVoted = this.nextMap.layer === 'To be voted';
+      const currentLayer = await Layers.getLayerByLayerID(currentMap.layer);
+      const nextLayer = nextMapToBeVoted ? null : await Layers.getLayerByLayerID(nextMap.layer);
 
       if (this.layerHistory.length === 0) {
         this.layerHistory.unshift({ layer: currentLayer, time: Date.now() });
@@ -484,8 +488,8 @@ export default class SquadServer extends EventEmitter {
       this.currentLayer = currentLayer;
       this.nextLayer = nextLayer;
       // TODO split these up to individual factions and subfactions.
-      this.nextLayerAlt = nextMap?.layer
-      this.nextFactions = nextMap?.factions
+      this.nextLayerAlt = this.nextMap.layer
+      this.nextFactions = this.nextMap.factions
       this.nextLayerToBeVoted = nextMapToBeVoted;
 
       this.emit('UPDATED_LAYER_INFORMATION');
@@ -558,8 +562,8 @@ export default class SquadServer extends EventEmitter {
       this.teamOne = info.teamOne
       this.teamTwo = info.teamTwo
 
-      if (!this.currentLayer) this.currentLayer = Layers.getLayerByClassname(info.currentLayer);
-      if (!this.nextLayer) this.nextLayer = Layers.getLayerByClassname(info.nextLayer);
+      if (!this.currentLayer) this.currentLayer = await Layers.getLayerByLayerID(info.currentLayer);
+      if (!this.nextLayer) this.nextLayer = await Layers.getLayerByLayerID(info.nextLayer);
 
       this.emit('UPDATED_A2S_INFORMATION', info);
       this.emit('UPDATED_SERVER_INFORMATION', info);
@@ -699,13 +703,15 @@ export default class SquadServer extends EventEmitter {
    */
   getMatchHistorySinceSessionStart() {
     const jensens = 'jensen'
+    const seedMode = 'Seed'
+
     const matchHistory = this.matchHistoryNew
 
     let sessionStartIndex = 0
     for (let i = 0; i < matchHistory.length; i++) {
       const map = matchHistory[i].layerClassname.toLowerCase().trim().replace(" ", "");
-
-      if (map.includes(jensens)) {
+      const mode = matchHistory[i].layerClassname.split("_")[1]
+      if (map.includes(jensens) || mode.includes(seedMode)) {
         sessionStartIndex = i
         break
       }
@@ -732,5 +738,36 @@ export default class SquadServer extends EventEmitter {
     for (const admin of adminNotifyList) {
       await this.rcon.warn(admin, message);
     }
+  }
+
+  playerIsAdmin(steamID) {
+    const onlineAdminListWithPerms = this.getAdminsWithPermission('canseeadminchat');
+    return onlineAdminListWithPerms.includes(steamID);
+  }
+
+
+  /**
+   * Stupid hack to hopefully make the server store the correct layer information.
+   * @returns {Promise<void>}
+   */
+
+  async getLayerInfo() {
+    const currentMapInfo = await this.rcon.getCurrentMap()
+    const nextMapInfo = await this.rcon.getNextMap()
+
+    let nextLayer = await Layers.getLayerByClassname(nextMapInfo.layer)
+    let currentLayer = await Layers.getLayerByClassname(currentMapInfo.layer)
+
+    if (!currentLayer) { currentLayer = await Layers.getLayerByName(currentMapInfo.layer)}
+    if (!nextLayer) { nextLayer = await Layers.getLayerByName(nextMapInfo.layer)}
+
+    if (!currentLayer) { currentLayer = await Layers.getLayerByLayerID(currentMapInfo.layer)}
+    if (!nextLayer) { nextLayer = await Layers.getLayerByLayerID(nextMapInfo.layer)}
+
+    this.currentLayer = currentLayer
+    this.nextLayer = nextLayer
+
+    this.currentMap = currentMapInfo
+    this.nextMap = nextMapInfo
   }
 }
