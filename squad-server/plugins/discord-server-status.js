@@ -54,6 +54,8 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
 
   async mount() {
     await super.mount();
+    this.updateStatus()
+    this.updateMessages()
     this.updateInterval = setInterval(this.updateMessages, this.options.updateInterval);
     this.updateStatusInterval = setInterval(this.updateStatus, this.options.updateInterval);
   }
@@ -82,29 +84,36 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
 
     embed.addField('Players', players);
 
-    // Custom fix for if layers aren't loaded properly
-    if (this.server.currentLayer === null) {
-      this.server.currentLayer = await this.server.rcon.getCurrentMap();
-    }
 
-    if (this.server.nextLayer === null) {
-      this.server.nextLayer = await this.server.rcon.getNextMap();
-    }
+    await this.server.getLayerInfo()
+
 
     // Set layer embed fields.
     embed.addField(
       'Current Layer',
-      `\`\`\`${this.server.currentLayer?.name || this.server.currentLayer.layer}\`\`\``,
+      `> **${this.server.currentLayer?.name || this.server.currentLayer?.layer || this.server.currentMap.layer || 'Unknown'}**`,
       true
     );
     embed.addField(
       'Next Layer',
-      `\`\`\`${
+      `> **${
         this.server.nextLayer?.name ||
-        (this.server.nextLayerToBeVoted ? 'To be voted' : this.server.nextLayer.layer)
-      }\`\`\``,
+        (this.server.nextLayerToBeVoted ? 'To be voted' : this.server.nextLayer?.layer || this.server.nextMap?.layer || "Unknown")
+      }**`,
       true
     );
+
+    embed.addField('\u200B', '\u200B')
+
+    /*
+    Values support markdown language.
+     */
+    embed.addField('Current Factions',
+      `1. ${this.server.currentMap.factions.split(" ")[0]}\n` +
+      `2. ${this.server.currentMap.factions.split(" ")[1]}`, true)
+    embed.addField('Next Factions',
+      `1. ${this.server.nextMap.factions.split(" ")[0]}\n` +
+      `2. ${this.server.nextMap.factions.split(" ")[1]}`, true)
 
     // Set layer image.
     embed.setImage(
@@ -119,10 +128,6 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
     // Set footer.
     embed.setFooter(COPYRIGHT_MESSAGE);
 
-    // Clamp the ratio between 0 and 1 to avoid tinygradient errors.
-    const ratio = this.server.a2sPlayerCount / (this.server.publicSlots + this.server.reserveSlots);
-    const clampedRatio = Math.min(1, Math.max(0, ratio));
-
     // Set gradient embed color.
     embed.setColor(
       parseInt(
@@ -131,7 +136,7 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
           { color: '#ffff00', pos: 0.5 },
           { color: '#00ff00', pos: 1 }
         ])
-          .rgbAt(clampedRatio)
+          .rgbAt(this.server.a2sPlayerCount / (this.server.publicSlots + this.server.reserveSlots))
           .toHex(),
         16
       )
@@ -143,18 +148,9 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
   async updateStatus() {
     if (!this.options.setBotStatus) return;
 
-    // Custom fix for if layers aren't loaded properly
-    if (this.server.currentLayer === null) {
-      this.server.currentLayer = await this.server.rcon.getCurrentMap();
-    }
-
-    if (this.server.nextLayer === null) {
-      this.server.nextLayer = await this.server.rcon.getNextMap();
-    }
-
     await this.options.discordClient.user.setActivity(
       `(${this.server.a2sPlayerCount}/${this.server.publicSlots}) ${
-        this.server.currentLayer?.name || this.server.currentLayer.layer
+        this.server.currentMap.layer || 'Unknown'
       }`,
       { type: 'WATCHING' }
     );
