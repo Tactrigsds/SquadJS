@@ -5,7 +5,6 @@ export default class PublicCommands extends BasePlugin {
   static get description() {
     return (
       "Plugin for commands that every player will be able to use."
-
     );
   }
 
@@ -49,6 +48,8 @@ export default class PublicCommands extends BasePlugin {
   async showNextMapCommand(info) {
     let message;
     let nextMap = {};
+    const warns = []
+
     if (!this.server.nextFactions || !this.server.nextLayerAlt) {
       const nextMapData = await this.server.rcon.getNextMap()
       /*
@@ -72,6 +73,8 @@ export default class PublicCommands extends BasePlugin {
     }
 
 
+
+
     if (nextMap.layer && nextMap.factions) {
       const splitFactions = nextMap.factions.split(" ")
       let faction1 = splitFactions[0].split("+");
@@ -92,15 +95,31 @@ export default class PublicCommands extends BasePlugin {
         subfaction2 = 'CombinedArms'
       }
 
-      message = `Next layer: ${nextMap.layer} \n`
-      message += `Factions: \n`
-      message += `${faction1}+${subfaction1} vs ${faction2}+${subfaction2}\n`
+      const nextRoundTeamID = (info.player.teamID === 2) ? 1 : 2;
+
+      message = `Next layer: ${nextMap.layer} \n\n`
+      message += `Next factions: \n`
+      message += `${faction1}+${subfaction1} vs ${faction2}+${subfaction2}\n\n`
+      const team = (nextRoundTeamID === 1) ? `${nextRoundTeamID} - ${faction1}+${subfaction1}` : `${nextRoundTeamID} - ${faction2}+${subfaction2}`
+      message += `You will be Team ${team} next round.`
+
+      if (this.server.playerIsAdmin(info.steamID)) {
+        if (!this.server.nextLayerSet) {
+          warns.push(message)
+          message = ``
+          const newMessage = `SquadJS - NOTE to admins; Next map has *not* been set by admins. Please consider discussing options for next map.`
+          warns.push(newMessage)
+        }
+      }
     } else {
       message = `Unable to show the next map.\n`
     }
 
-    const warns = [message]
-    
+    if (message.length > 3) {
+      warns.push(message)
+    }
+
+
     for (let i = 0; i < 3; i++) {
       for (const warnMessage of warns) {
         await this.server.rcon.warn(info.steamID, warnMessage)
