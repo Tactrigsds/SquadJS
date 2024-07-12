@@ -1,6 +1,6 @@
 import DiscordBasePlugin from "./discord-base-plugin.js";
 import fs from 'fs';
-import { factions, getSubfaction} from '../utils/faction-constants.js'
+import { factions, getSubfaction, defaultMapList, subfactionAbbreviations } from '../utils/faction-constants.js'
 import axios from "axios";
 
 /*
@@ -12,9 +12,10 @@ KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
 export default class TTCustomVote extends DiscordBasePlugin {
   static get description() {
     return (
-      +'<code>TT Custom Vote</code> Plugin that pulls curated layers, factions and subfactions into a pool that admins can access in game' +
+      '<code>' +
+      'TT Custom Vote</code> Plugin that pulls a list of curated layers, factions and subfactions into a pool that admins can access in game and launch map votes with.' +
       ''
-    );
+    )
   }
 
   static get defaultEnabled() {
@@ -126,9 +127,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
         example: ["symm", "sym", "symmetrical"]
       },
       mapList: {
-        required: true,
+        required: false,
         description: "A list of maps and their shorthands/identifiers that will be recognised in chat. The name is not case sensitive, but should be done correctly regardless.",
-        default: [],
         example: [
           {
             name: 'Al Basrah',
@@ -138,10 +138,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
       },
       useWebEndpoint: {
         required: false,
-        description: "Whether the plugin should load it's layer list from a web endpoint.",
+        description: "Whether the plugin should load it's layer list from a web endpoint. If enabled, requires an endpoint/web address, and can optionally include an API key if layer list is not public.",
         default: {
           enabled: false,
-          endpoint: ""
+          endpoint: "",
+          apiKey: ""
         }
       },
       balanceDifferential: {
@@ -153,6 +154,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
         required: false,
         description: "The version of the layerlist parser to use. Temporary.",
         default: 'version2'
+      },
+      setLayerOnRoundStart: {
+        required: false,
+        description: "Whether to set a random layer on match start, used as a fallback instead of the inbuilt layerlist on the server.",
+        default: false
       }
     };
   }
@@ -168,7 +174,6 @@ export default class TTCustomVote extends DiscordBasePlugin {
     this.tallyVotes = this.tallyVotes.bind(this);
     this.callVote = this.callVote.bind(this);
     this.clearVote = this.clearVote.bind(this);
-    this.getLevelFromMapList = this.getLevelFromMapList.bind(this)
 
     this.mapvote = false;
     this.voteInProgress = false;
@@ -181,6 +186,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
     this.recentPoolPicks = []
     this.previousParameters = []
     this.adminTriggeringPoolGen = { admin: null, steamID: null }
+    this.mapList = this.options.mapList ? this.options.mapList : defaultMapList
 
     if (!Object.values(LAYER_LIST_VERSION_ENUM).includes(this.options.layerlistVersion)) {
       throw Error('Config does not include a valid layerlist version.')
@@ -193,6 +199,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
     this.server.on('NEW_GAME', this.onNewGame);
     this.mapPool = [];
     this.server.curatedLayerList = []
+    this.server.setLayerOnRoundStart = this.options.setLayerOnRoundStart
+
+
     try {
       if (this.options.useWebEndpoint.enabled) {
         this.server.curatedLayerList = await this.loadLayerListFromWebEndpoint(this.options.useWebEndpoint.endpoint)
@@ -217,17 +226,36 @@ export default class TTCustomVote extends DiscordBasePlugin {
     this.server.removeEventListener(this.onNewGame);
   }
 
-
-  async onNewGame(info) {
-    this.mapVoteWinner = null;
-    this.previousParameters = [];
-    this.adminTriggeringPoolGen = { admin: null, steamID: null }
-    // TODO some sort of timeout may be required here, since the factions in a match are not actually loaded correctly until about 60 seconds seconds into the match, when the staging phase starts.
-    this.mapPool = await this.generatePoolFromParameters();
+  /**
+   *  Utility function for getting and setting a random map upon match start.
+   * @returns {Promise<void>}
+   */
+  async setPoolPickOnRoundStart(pool) {
+    const mapPick = this.getRandomArrayElement(pool)
+    if (!mapPick) {this.verbose(1, 'Something went wrong when trying to set the next map on round start.'); return}
+    this.verbose(1, 'Setting map on map start...')
+    await this.server.rcon.setNextLayer(assembleSetNextRCONCommandFromLayerObject(mapPick))
   }
 
 
 
+  async onNewGame() {
+    this.mapVoteWinner = null;
+    this.previousParameters = [];
+    this.server.nextLayerSet = false
+    this.adminTriggeringPoolGen = { admin: null, steamID: null }
+    this.mapPool = await this.generatePoolFromParameters();
+    if (this.server.setLayerOnRoundStart) {
+      setTimeout( async () => {
+        const tempPool = await this.generatePoolFromParameters();
+        this.server.warnAllAdmins('SquadJS: Setting random pick from map pool as a fallback.')
+        await this.setPoolPickOnRoundStart(tempPool)
+        setTimeout(() => {
+          this.server.nextLayerSet = false
+        }, 10 * 1000)
+      }, 60 * 1000)
+    }
+  }
 
 
 
