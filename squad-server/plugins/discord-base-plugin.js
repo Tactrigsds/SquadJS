@@ -35,7 +35,11 @@ export default class DiscordBasePlugin extends BasePlugin {
 
     if (typeof message === 'object' && 'embed' in message)
       message.embed.footer = message.embed.footer || { text: COPYRIGHT_MESSAGE };
-
-    await this.channel.send(message);
+    try {
+      await this.channel.send(message);
+    } catch (e) {
+      this.verbose(1, "Unable to send Discord message.")
+      console.log(e)
+    }
   }
 }

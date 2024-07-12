@@ -148,7 +148,14 @@ export default class DiscordBaseMessageUpdater extends BasePlugin {
   async updateMessages() {
     this.verbose(1, 'Generating message content for update...');
     // Generate the new message.
-    const generatedMessage = await this.generateMessage();
+    let generatedMessage
+    try {
+      generatedMessage = await this.generateMessage();
+    } catch (e) {
+      console.log('Error occured when updating message')
+      console.log(e)
+      return
+    }
 
     // Get subscribed messages.
     const subscribedMessages = await this.SubscribedMessage.findAll({

@@ -173,8 +173,8 @@ export default class DiscordRoundStartedScoreboard extends DiscordBasePlugin {
 
   async onRoundStart(info) {
     let scoreboardData = await this.buildScoreboard();
-
-    await this.sendDiscordMessage({
+    try {
+      await this.sendDiscordMessage({
       embed: {
         title: `${this.options.title_prefix}${scoreboardData.match.map} - ${scoreboardData.match.layer}`,
         description: `${scoreboardData.match.team1} (${scoreboardData.team1.kills} kills) vs ${scoreboardData.match.team2} (${scoreboardData.team2.kills} kills)  || ${scoreboardData.match.winnerTeam} won with ${scoreboardData.match.tickets} tickets in ${scoreboardData.match.round_mins} minutes.`,
@@ -214,6 +214,10 @@ export default class DiscordRoundStartedScoreboard extends DiscordBasePlugin {
         timestamp: info.time.toISOString()
       }
     });
+    } catch (e) {
+      console.log('Error occured when attempting to create scoreboard')
+      console.log(e)
+    }
   }
 
   /**
