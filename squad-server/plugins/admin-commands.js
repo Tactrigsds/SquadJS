@@ -458,6 +458,9 @@ export default class AdminCommands extends DiscordBasePlugin {
         await this.listRecentMatchDataLong(playerInfo)
         break
 
+      case '!factionswap':
+        await this.swapFactions(playerInfo)
+        break
 
       default:
     }
@@ -535,9 +538,8 @@ export default class AdminCommands extends DiscordBasePlugin {
   }
 
   async listRecentMatchDataShort(playerInfo) {
-    const mapsToSendCount = 6
-    // const matchHistory = this.server.matchHistoryNew.slice(1)
     let matchHistory = this.server.getMatchHistorySinceSessionStart()
+    const mapsToSendCount = 6
     const warns = []
     if (!matchHistory || !matchHistory.length) {
       await this.server.rcon.warn(playerInfo.steamID, 'Match history is empty. SquadJS was most likely unable to contact the database.')
@@ -547,26 +549,24 @@ export default class AdminCommands extends DiscordBasePlugin {
     matchHistory = matchHistory.slice(1)
     if (!matchHistory.length) {
       await this.server.rcon.warn(playerInfo.steamID, `No games stored in the current session, last map was most likely Jensens Range`)
+      return
     }
-
 
     let message = `Match data from the last ${mapsToSendCount} rounds: \n\n`
 
     for (let i = 0; i < matchHistory.length && i < mapsToSendCount; ++i) {
       const data = matchHistory[i]
-      const endTime = new Date(+data.endTime - (60 * 60 * 4 * 1000))
-      // let endTime = new Date(+data.endTime)
-      const estHours = endTime?.getHours()?.toString().padStart(2, '0')
-      const estMinutes = endTime?.getMinutes()?.toString().padStart(2, '0')
-      // const localDate = endTime.getDate()
-      // const localMonth = endTime.getMonth()
-      // const localMonth = endTime.getMonth()
-      // const localDay = endTime.getDay()
-
+      let endTime;
+      let estHours
+      let estMinutes
+      if (data.endTime) {
+        endTime = new Date(+data.endTime - (60 * 60 * 4 * 1000))
+        estHours = endTime?.getUTCHours()?.toString().padStart(2, '0')
+        estMinutes = endTime?.getUTCMinutes()?.toString().padStart(2, '0')
+      }
 
       message += `${i+1}.  `
       message += `${data.layerClassname}\n`
-      // message += `\n`
       if (endTime) {
         message += `Match End time: ${estHours}:${estMinutes} - EST`
       }
@@ -588,6 +588,19 @@ export default class AdminCommands extends DiscordBasePlugin {
       }
       await new Promise(resolve => setTimeout(resolve, this.server.warnMessagePersistenceTimeMilliSeconds));
     }
+  }
+
+  async swapFactions(playerInfo) {
+    const nextMap = await this.server.rcon.getNextMap()
+    const team1 = nextMap.factions.split(" ")[0]
+    const team2 = nextMap.factions.split(" ")[1]
+    const newNextFactions = `${team2} ${team1}`
+    const command = `${nextMap.layer} ${newNextFactions}`
+    this.verbose(1, `Swapping set factions for the next match.`)
+    this.verbose(1, `Set factions: ${newNextFactions}`)
+    await this.server.rcon.warn(playerInfo.steamID, 'Swapping factions for next map...')
+    this.verbose(1, `Swap triggered by admin: ${playerInfo.name}`)
+    await this.server.rcon.setNextLayer(command)
   }
 
   async onPlayerConnected(info) {
