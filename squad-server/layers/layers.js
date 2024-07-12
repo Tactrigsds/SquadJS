@@ -52,6 +52,10 @@ class Layers {
   getLayerByClassname(classname) {
     return this.getLayerByCondition((layer) => layer.classname === classname);
   }
+
+  getLayerByLayerID(layerid) {
+    return this.getLayerByCondition((layer) => layer.layerid === layerid);
+  }
 }
 
 export default new Layers();

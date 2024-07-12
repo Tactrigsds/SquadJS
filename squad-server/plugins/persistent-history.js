@@ -47,7 +47,6 @@ export default class PersistentHistory extends BasePlugin {
   async mount() {
     this.DBLogPlugin = this.server.plugins.find(p => p instanceof DBLog);
     if (!this.DBLogPlugin) { this.verbose(1, 'Could not find db plugin'); return }
-
     await this.updateLayerHistory()
     this.verbose(1, 'Loaded layer history from database...')
     this.server.on('DATABASE_UPDATED', this.onDatabaseUpdated)

@@ -14,7 +14,6 @@ import {SQUADJS_VERSION} from './utils/constants.js';
 
 import fetchAdminLists from './utils/admin-lists.js';
 
-EventEmitter.setMaxListeners(0)
 
 export default class SquadServer extends EventEmitter {
 
@@ -24,11 +23,12 @@ export default class SquadServer extends EventEmitter {
     for (const option of ['host'])
       if (!(option in options)) throw new Error(`${option} must be specified.`);
 
-    this.setMaxListeners(0)
+    this.setMaxListeners(50)
     this.id = options.id;
     this.options = options;
     this.warnMessageCharLimit = 215
     this.serverBroadcastCharLimit = 200
+    this.voteMessageBaseLength = 64
     this.warnMessagePersistenceTimeMilliSeconds = 6100
     this.matchHistory = []
     this.layerHistory = [];
@@ -38,7 +38,7 @@ export default class SquadServer extends EventEmitter {
     this.nextLayerAlt = null;
     this.nextFactions = null;
     this.currentFactions = null;
-
+    this.setLayerOnRoundStart = false
     // this.nextLayerSet = true
 
 
@@ -73,6 +73,22 @@ export default class SquadServer extends EventEmitter {
     this.pingSquadJSAPI = this.pingSquadJSAPI.bind(this);
     this.pingSquadJSAPIInterval = 5 * 60 * 1000;
     this.pingSquadJSAPITimeout = null;
+
+    this.eventsEnum =  Object.freeze({
+      newGame: 'NEW_GAME',
+      roundEnd: 'ROUND_END',
+      nextLayerSet: 'MAP_SET',
+      chatMessage: 'CHAT_MESSAGE',
+      playerConnected: 'PLAYER_CONNECTED',
+      playerDisconnected: 'PLAYER_DISCONNECTED',
+      databaseUpdated: 'DATABASE_UPDATED',
+      possessedAdminCamera: 'POSSESSED_ADMIN_CAMERA',
+      unPossessedAdminCamera: 'UNPOSSESSED_ADMIN_CAMERA',
+      playerWarned: 'PLAYER_WARNED',
+      playerKicked: 'PLAYER_KICKED',
+      playerBanned: 'PLAYER_BANNED',
+      playerCreated: 'SQUAD_CREATED',
+    });
   }
 
   async watch() {
@@ -474,12 +490,11 @@ export default class SquadServer extends EventEmitter {
     try {
       const currentMap = await this.rcon.getCurrentMap();
       const nextMap = await this.rcon.getNextMap();
-      this.currentMap = currentMap
-      this.nextMap = nextMap
-      const nextMapToBeVoted = this.nextMap.layer === 'To be voted';
+      const nextMapToBeVoted = nextMap.layer === 'To be voted';
       const currentLayer = await Layers.getLayerByLayerID(currentMap.layer);
       const nextLayer = nextMapToBeVoted ? null : await Layers.getLayerByLayerID(nextMap.layer);
-
+      this.currentMap = currentMap
+      this.nextMap = nextMap
       if (this.layerHistory.length === 0) {
         this.layerHistory.unshift({ layer: currentLayer, time: Date.now() });
         this.layerHistory = this.layerHistory.slice(0, this.layerHistoryMaxLength);
@@ -716,7 +731,7 @@ export default class SquadServer extends EventEmitter {
         break
       }
     }
-    return matchHistory.slice(0, sessionStartIndex)
+    return sessionStartIndex === 0 ? matchHistory : matchHistory.slice(0, sessionStartIndex)
   }
 
 
@@ -770,4 +785,7 @@ export default class SquadServer extends EventEmitter {
     this.currentMap = currentMapInfo
     this.nextMap = nextMapInfo
   }
+
+
+
 }
