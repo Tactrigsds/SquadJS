@@ -13,17 +13,30 @@ export default class NextLayerSet extends BasePlugin {
   }
 
   static get optionsSpecification() {
-    return {};
+    return {
+      warnAdminsIfNextNotSet: {
+        required: false,
+        description: "Whether the plugin should warn admins if the next map has not been set.",
+        default: false
+      },
+      nextNotSetDelaySeconds: {
+        required: false,
+        description: "The delay into the round before the check happens and admins will be warned.",
+        default: 60 * 15
+      }
+    };
   }
 
   constructor(server, options, connectors) {
     super(server, options, connectors);
 
     this.onSetMap = this.onSetMap.bind(this);
+    this.onNewGame = this.onNewGame.bind(this);
   }
 
   async mount() {
     this.server.on('MAP_SET', this.onSetMap);
+    this.server.on('NEW_GAME', this.onNewGame)
   }
 
   async unmount() {
@@ -40,7 +53,15 @@ export default class NextLayerSet extends BasePlugin {
     }
     
     await this.server.warnAllAdmins(message)
-    this.server.nextLayerAlt = info.nextLayer
-    this.server.nextFactions = info.nextFactions
+    this.server.nextLayerSet = true
+  }
+
+  async onNewGame(info) {
+    this.nextMapSetCheck = setTimeout(async () => {
+      if (!this.server.nextLayerSet) {
+        this.server.warnAllAdmins(`The next map has not been set, please consider map options and starting a vote.`)
+        }
+      },
+      this.options.nextNotSetDelaySeconds * 1000)
   }
 }
