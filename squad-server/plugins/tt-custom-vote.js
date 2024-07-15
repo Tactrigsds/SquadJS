@@ -1149,9 +1149,12 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
     if (this.mapVoteRunning) {
       this.mapVoteRunning = false;
-      if (this.options.autoSetMapVoteWinner && this.mapVoteWinner) {
-        const command = assembleSetNextRCONCommandFromLayerObject(this.mapVoteWinner);
-        await this.server.rcon.setNextLayer(command);
+      // TODO specify action if a tie happens. This is a quick bandaid for the auto set.
+      if (!tie) {
+        if (this.options.autoSetMapVoteWinner && this.mapVoteWinner) {
+          const command = assembleSetNextRCONCommandFromLayerObject(this.mapVoteWinner);
+          await this.server.rcon.setNextLayer(command);
+        }
       }
     }
 
