@@ -531,21 +531,17 @@ export default class TTCustomVote extends DiscordBasePlugin {
           return;
         }
 
-        const subfactionMap = new Map([
-          ['Motorized', 'Motor'],
-          ['AirAssault', 'Air'],
-          ['Armored', 'Armor'],
-          ['CombinedArms', 'CmbArm'],
-          ['Support', 'Supp'],
-          ['LightInfantry', 'Inf'],
-          ['Mechanized', 'Mech']
-        ]);
-
         const options = [];
         for (const voteOption of this.mapPool) {
-          const option = `${voteOption.layer} ${voteOption.faction1} ${subfactionMap.get(
-            voteOption.subfaction1
-          )} vs ${voteOption.faction2} ${subfactionMap.get(voteOption.subfaction2)}`;
+          let option
+          const variantLong = `${voteOption.layer} ${voteOption.faction1} ${voteOption.subfaction1} vs ${voteOption.faction2} ${voteOption.subfaction2}`;
+          const variantShort = `${voteOption.layer} ${voteOption.faction1} ${subfactionAbbreviations.get(voteOption.subfaction1)} vs ${voteOption.faction2} ${subfactionAbbreviations.get(voteOption.subfaction2)}`;
+
+          if (variantLong.length + this.server.voteMessageBaseLength >= this.server.serverBroadcastCharLimit) {
+            option = variantShort
+          } else {
+            option = variantLong
+          }
           options.push(option);
         }
 
@@ -1168,10 +1164,13 @@ export default class TTCustomVote extends DiscordBasePlugin {
         `Server: There has been a tie! Total votes: ${this.ballotBox.size}.\n${totalsStr}`
       );
     } else {
-      await this.server.rcon.broadcast(
-        // `Server: ${winner} has won the vote! Total votes: ${this.ballotBox.size}.\n${totalsStr}`
-        `Server: ${winner} has won the vote! Total votes: ${this.ballotBox.size}.`
-      );
+      let msg;
+      msg = `Server: ${winner} has won the vote! Total votes: ${this.ballotBox.size}.\n${totalsStr}`
+      if (msg.length >= this.server.serverBroadcastCharLimit) {
+        msg = `Server: ${winner} has won the vote! Total votes: ${this.ballotBox.size}.`
+      }
+
+      await this.server.rcon.broadcast(msg);
     }
 
     const message = {
