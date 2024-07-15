@@ -1,7 +1,7 @@
 import BasePlugin from './base-plugin.js';
 import fs from "fs";
 
-export default class TTRotationHandler extends BasePlugin {
+export default class TTAutoRotation extends BasePlugin {
     static get description() {
         return (
             "Plugin meant to allow users to kill themselves(i.e double swap themselves) so they can get rid of the running man bug"
@@ -23,39 +23,52 @@ export default class TTRotationHandler extends BasePlugin {
                 required: false,
                 description: "File path to the rotation. Needs to be formatted in the same way it'd be used to set the next map.",
                 example: "/path/to/file.txt"
+            },
+            autoRemovefogOfWar: {
+                required: false,
+                description: "Whether to automatically disable fog of war, identical functionality to the fog of war plugin.",
+                default: false
+            },
+            autoFogOfWarDelay: {
+                required: false,
+                description: "The delay before fog of war gets disabled.",
+                default: 10 * 1000
             }
         };
     }
 
     constructor(server, options, connectors) {
         super(server, options, connectors);
-        this.onRoundStart = this.onRoundStart.bind(this)
+        this.onNewGame = this.onNewGame.bind(this)
         this.loadRotation = this.loadRotation.bind(this)
         this.setNextLayerInRotation = this.setNextLayerInRotation.bind(this)
         this.rotation = null;
     }
 
     async mount() {
-        this.server.on('NEW_GAME', this.onRoundStart)
+        this.server.on(this.server.eventsEnum.newGame, this.onNewGame)
         await new Promise(resolve => setTimeout(resolve, 300))
         this.rotation = await this.loadRotation()
         this.setLayerOnRoundStartInitialState = this.server.setLayerOnRoundStart
         this.server.setLayerOnRoundStart = false
-        this.onRoundStart()
+        await this.onNewGame()
     }
 
     async unmount() {
-        this.server.removeEventListener(this.onRoundStart)
+        this.server.removeEventListener(this.onNewGame)
     }
 
 
-    async onRoundStart(info) {
-        await new Promise(resolve => setTimeout(resolve, 30 * 1000))
+    async onNewGame(info) {
+        if (this.options.autoRemovefogOfWar) {
+            setTimeout(() => {
+                this.server.rcon.setFogOfWar(0)
+              }, this.options.autoFogOfWarDelay)
+        }
         await this.setNextLayerInRotation()
     }
 
     async setNextLayerInRotation() {
-        // TODO find a way to remove a pick from the rotation if it does not work.
         this.server.setLayerOnRoundStart = false
         const matchHistory = this.server.getMatchHistorySinceSessionStart()
         let nextRotationPick;
@@ -79,6 +92,7 @@ export default class TTRotationHandler extends BasePlugin {
                 await new Promise(resolve => setTimeout(resolve, 5000))
                 const nextMap = await this.server.rcon.getNextMap()
                 if (!layer.includes(`${nextMap.layer} ${nextMap.factions}`)) {
+                    this.verbose(1, 'Invalid layer detected...')
                     await this.removeInvalidLayer(layer)
                     this.setNextLayerInRotation()
                 } else {
@@ -89,7 +103,6 @@ export default class TTRotationHandler extends BasePlugin {
                 }
             }
         }
-
 
         if (!nextRotationPick) {
             return
@@ -109,7 +122,8 @@ export default class TTRotationHandler extends BasePlugin {
         } catch (e) {
             return []
         }
-
+        // TODO fix regex so it also accepts no faction specified while another gets a speified subfaction
+        // Eg. "
         const regex = /^\w+\s\w+\+\w+\s\w+\+\w+$/;
         const regex2 = /^\w+_\w+_\w+\s\w+\s\w+$/;
 
@@ -128,15 +142,15 @@ export default class TTRotationHandler extends BasePlugin {
 
     async removeInvalidLayer(layer) {
         this.verbose(1, `Removing invalid layer from rotation: ${layer}...`)
-        let rotation = await this.loadRotation()
-        let newData = []
+        const rotation = await this.loadRotation()
+        const newData = []
 
         for (const line of rotation) {
             if (!line.trim().includes(layer.trim())) {
                 newData.push(line)
             } else {
-                // console.log('Found a layer to remove.')
-                // console.log(layer)
+                // this.verbose(1, 'Found a layer to remove.')
+                // this.verbose(1, layer)
             }
         }
 
