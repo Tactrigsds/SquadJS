@@ -218,9 +218,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.verbose(1, 'Unable to generate map pool.');
       this.verbose(1, err);
     }
-    this.verbose(3, 'Loaded layers: ' + this.options.curatedLayerListPath);
+
+    this.safeLayerList = generateSafeLayerList(this.server.curatedLayerList)
+
     // TODO make a function that converts the pool into a "printable" format.
-    this.mapPool = await this.generatePoolFromParameters([], null, true);
+    this.mapPool = await this.generatePoolFromParameters([], null, true, this.server.curatedLayerList);
     this.verbose(3, 'Curated pool on mount: ' + this.mapPool);
   }
 
@@ -241,16 +243,16 @@ export default class TTCustomVote extends DiscordBasePlugin {
   }
 
 
-
   async onNewGame() {
     this.mapVoteWinner = null;
     this.previousParameters = [];
     this.server.nextLayerSet = false
     this.adminTriggeringPoolGen = { admin: null, steamID: null }
-    this.mapPool = await this.generatePoolFromParameters();
+    this.mapPool = await this.generatePoolFromParameters([], null, false, this.server.curatedLayerList);
+
     if (this.server.setLayerOnRoundStart) {
       setTimeout( async () => {
-        const tempPool = await this.generatePoolFromParameters();
+        const tempPool = await this.generatePoolFromParameters([], null, false, this.safeLayerList);
         this.server.warnAllAdmins('SquadJS: Setting random pick from map pool as a fallback.')
         await this.setPoolPickOnRoundStart(tempPool)
         setTimeout(() => {
@@ -546,6 +548,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
           )} vs ${voteOption.faction2} ${subfactionMap.get(voteOption.subfaction2)}`;
           options.push(option);
         }
+
         this.mapVoteRunning = true;
         this.voteOptions = options;
         this.callVote(this.voteOptions);
@@ -730,8 +733,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
 
   // Generates the pool of maps from the paramaters given to the command. For ex. !genpool Narva Mutaha Yehorivka will generate a pool of those maps
-  async generatePoolFromParameters(splitMessage = [], playerInfo = null, timeout = false) {
-
+  async generatePoolFromParameters(splitMessage = [], playerInfo = null, timeout = false, layerList) {
 
     // This is a really stupid hack to ensure that the "persistent history" plugin can load the matches from the database before the pool is generated.
     if (timeout) {
@@ -748,7 +750,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
     this.verbose(1, 'Generating map pool...');
     const desiredMaps = [];
-    const globalFilters = { symmetrical: false, mapSize: '', gameMode: '', subfactionSymmetry: null };
+    const globalFilters = { symmetrical: false, mapSize: '', gameMode: '', subfactionSymmetry: null, newUnits: false };
     const messages = splitMessage.map(message => message.toLowerCase().trim());
     const parameters = messages.slice(1);
     const globalFactions = [];
@@ -757,12 +759,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
     const desiredMapSizes = [];
     const slotOptions = [];
     const currentMapPool = [];
-    const allLayers = this.server.curatedLayerList;
+    const allLayers = layerList;
 
     // eslint-disable-next-line no-unused-vars
     let recentMatchups = [];
     let recentMatches = this.server.getMatchHistorySinceSessionStart();
-
 
     recentMatches = recentMatches.map(match => {
       return {
@@ -784,7 +785,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
     for (const parameter of parameters) {
       this.verbose(2, `Parameter: ${parameter}`);
-      const level = this.getLevelFromMapList(parameter);
+      const level = getLevelFromMapList(parameter, this.mapList);
       const faction = getFactionFromShorthand(parameter, factions);
       if (level && desiredMaps.length < this.mapPoolSize) {
         desiredMaps.push(level);
@@ -805,8 +806,13 @@ export default class TTCustomVote extends DiscordBasePlugin {
       else if (gameModes.includes(parameter) && !globalFilters.gameMode) {
         globalFilters.gameMode = parameter;
         validParameters.push(parameter);
-
       }
+
+      else if (parameter === 'new' && !globalFilters.newUnits) {
+        globalFilters.newUnits = true
+        validParameters.push(parameter)
+      }
+
       else if (!globalFilters.subfactionSymmetry) {
         if (symmetricalIdentifiers.includes(parameter)) {
           globalFilters.subfactionSymmetry = SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL
@@ -852,7 +858,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
       this.verbose(2, 'Running pool generation with default parameters..');
       const tempSizes = [];
       for (let i = 0; i < this.mapPoolSize; i++) {
-        tempSizes.push(getRandomMapSize());
+        tempSizes.push(getRandomMapSizeDefaults());
       }
       const randomInt = getRandomInt(0, this.mapPoolSize - 1);
       const randomSize = tempSizes[randomInt];
@@ -915,17 +921,29 @@ export default class TTCustomVote extends DiscordBasePlugin {
     // Generate any missing filter options.
     for (let i = currentMapPool.length + slotOptions.length; i < this.mapPoolSize; i++) {
       let mapSize;
+      let gameMode;
+
       if (globalFilters.mapSize) {
         mapSize = globalFilters.mapSize;
       } else if (desiredMapSizes) {
         mapSize = desiredMapSizes.shift()
       } else {
-        mapSize = getRandomMapSize();
+        mapSize = getRandomMapSizeDefaults();
       }
+
+      if (globalFilters.gameMode) {
+        gameMode = globalFilters.gameMode;
+      } else {
+        gameMode = getRandomGameModeDefaults();
+      }
+
+
+
       const option = createSlotOptionFilters(
         globalFilters.subfactionSymmetry,
         mapSize,
-        globalFilters.gameMode
+        gameMode,
+        globalFilters.newUnits
       );
       slotOptions.push(option);
     }
@@ -938,7 +956,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
         null,
         option.symmetryOption,
         option.gameMode,
-        option.mapSize
+        option.mapSize,
+        option.useNewUnits
       );
 
       const map = this.generatePoolBase(currentMapPool, filteredLayers, recentMatches, false, POOL_DUPLICATE_FILTERS_ENUM.ALLOW_NO_DUPLICATES, false, 1);
@@ -1195,7 +1214,7 @@ export default class TTCustomVote extends DiscordBasePlugin {
  * Utility function that defines the chance of getting each map size.
  * @returns {string} An enum/string value representing a map size.
  */
-function getRandomMapSize() {
+function getRandomMapSizeDefaults() {
   let mapSize;
   const rng = getRandomInt(0, 100 - 1);
   const upper = 40;
@@ -1209,6 +1228,24 @@ function getRandomMapSize() {
     mapSize = MAP_SIZES_ENUM.SMALL;
   }
   return mapSize;
+}
+
+/**
+ * Defines and retrieves the wanted ratio of game modes.
+ * @returns {string}
+ */
+function getRandomGameModeDefaults() {
+  let gameMode;
+  const rng = getRandomInt(0, 99)
+  const chanceOfRaas = 70
+  // TODO switch to using enums for this
+  if (rng < chanceOfRaas) {
+    gameMode = 'RAAS'
+  } else {
+    gameMode = 'AAS'
+  }
+
+  return gameMode
 }
 
 function getRandomInt(min, max) {
@@ -1237,9 +1274,28 @@ function assembleSetNextRCONCommandFromLayerObject(layer) {
   return `${layer.layer} ${layer.faction1}+${layer.subfaction1} ${layer.faction2}+${layer.subfaction2}`;
 }
 
+  /**
+   *
+   * @param message
+   * @param mapList A list of objects representing maps and their shorthands.
+   * @returns {null | string}
+   */
+function getLevelFromMapList(message, mapList) {
+  let foundMap = null;
+
+  for (const map of mapList) {
+    if (map.shorthands.includes(message)) {
+      foundMap = map
+      break
+    }
+  }
+  return foundMap;
+}
 
 // TODO include a faction vs faction filter at some point?
-function filterLayers(layers, map, symmetryFilter, gameModeFilter, mapSizeFilter) {
+function filterLayers(layers, map, symmetryFilter, gameModeFilter, mapSizeFilter, useNewUnits) {
+  layers = layers.filter(layer => !hasBannedFactionAndSubfactions(layer))
+
   if (map) {
     layers = layers.filter(layer => {
       const potentialMap = layer?.level.replace(' ', '').toLowerCase();
@@ -1265,10 +1321,12 @@ function filterLayers(layers, map, symmetryFilter, gameModeFilter, mapSizeFilter
   if (mapSizeFilter) {
     layers = layers.filter(layer => layer?.size.toLowerCase() === mapSizeFilter.toLowerCase());
   }
+  if (useNewUnits) {
+    layers = layers.filter(layer => hasNewSubfactions(layer))
+  }
+
   return layers;
 }
-
-
 /**
  * Checks if a given layer has symmetrical subfactions
  * @param layer An object from a layer list, representing a potential pick, it's factions etc.
@@ -1278,7 +1336,7 @@ function hasSymmetricalSubfactions(layer) {
   // Tentative, likely to change.
   // Format
   // Level: Layer: Size: Faction_1: SubFac_1: Faction_2: SubFac_2
-  return layer?.subfaction1.toLowerCase() === layer?.subfaction2.toLowerCase();
+  return layer?.subfaction1?.toLowerCase() === layer?.subfaction2?.toLowerCase();
 }
 
 /**
@@ -1334,10 +1392,153 @@ function createMapSlotOption(map, mapIdentifiers, symmetryOption, gameMode) {
   return { map, mapIdentifiers, symmetryOption, gameMode };
 }
 
-function createSlotOptionFilters(symmetryOption, mapSize, gameMode) {
-  return { symmetryOption, mapSize, gameMode };
+function createSlotOptionFilters(symmetryOption, mapSize, gameMode, useNewUnits) {
+  return { symmetryOption, mapSize, gameMode, useNewUnits };
 }
 
+
+
+class MapSelectionParameters {
+  /**
+   * Class used to represent a potential map pick for the pool generator.
+   * @param map
+   * @param mapIdentifiers
+   * @param symmetry
+   * @param gameMode
+   */
+  constructor(map, mapIdentifiers, symmetry, gameMode) {
+    this.map = map
+    this.mapIdentifiers = mapIdentifiers
+    this.symmetry = symmetry
+    this.gameMode = gameMode
+  }
+}
+
+
+class RegularPickSlotParameters {
+  constructor(symmetryOption, mapSize, gameMode, useNewUnits) {
+    this.symmetryOption = symmetryOption;
+    this.mapSize = mapSize;
+    this.gameMode = gameMode;
+    this.useNewUnits = useNewUnits;
+  }
+}
+
+
+function checkIfLayerIsRecentlyPlayed(layer, recentMatches) {
+  recentMatches = recentMatches.map((layer) =>
+    layer.layerClassname.toLowerCase().trim().replace(' ', '')
+  );
+  return recentMatches.includes(layer.layer.toLowerCase().trim());
+}
+
+
+function generateSafeLayerList(allLayers) {
+  const unsafeMaps = [
+    'AlBasrah',
+    'Anvil',
+    'Tallil',
+    'Skorpo',
+    'Kamdesh',
+    'Lashkar',
+    'Kohat',
+    'Sanxian'
+  ]
+
+  const unsafeFactions = [
+    'INS',
+    'IMF'
+  ]
+
+  allLayers = allLayers.filter(layer => !hasBannedFactionAndSubfactions(layer))
+  allLayers = allLayers.filter(layer => getGameMode(layer) === "RAAS")
+  allLayers = allLayers.filter(layer => !hasUnsafeMap(layer, unsafeMaps))
+  allLayers = allLayers.filter(layer => !hasUnsafeFaction(layer, unsafeFactions))
+  allLayers = allLayers.filter(layer => Math.abs(layer.balanceDifferential) < 1.0)
+  // console.log(allLayers)
+  // console.log(allLayers)
+
+  return allLayers
+
+}
+
+
+/**
+ * Checks if a layer has new subfactions.
+ * Contains new units as of Squad version 8.0
+ * @param layer A layer from the curated layer list.
+ * @returns {boolean} A boolean of whether the layer/matchup contains one of the new subfactions.
+ */
+
+function hasNewSubfactions(layer) {
+  const newUnits = [
+    {faction: 'USA', subfaction: 'Armored'},
+    {faction: 'USA', subfaction: 'Mechanized'},
+    {faction: 'USA', subfaction: 'Support'},
+    {faction: 'TLF', subfaction: 'Support'},
+    {faction: 'RGF', subfaction: 'Mechanized'},
+    {faction: 'RGF', subfaction: 'Armored'},
+  ]
+
+  for (const unit of newUnits) {
+    if ((layer.faction1 === unit.faction && layer.subfaction1 === unit.subfaction) || (layer.faction2 === unit.faction && layer.subfaction2 === unit.subfaction)) {
+      return true
+    }
+  }
+  return false
+}
+
+function hasBannedFactionAndSubfactions(layer) {
+  const bannedFactions = [
+    {faction: 'USA', subfaction: 'Support'},
+    {faction: 'TLF', subfaction: 'Support'},
+  ]
+
+  for (const bannedFaction of bannedFactions) {
+    if ((bannedFaction.faction === layer.faction1 && bannedFaction.subfaction === layer.subfaction1) || (bannedFaction.faction === layer.faction2 && bannedFaction.subfaction === layer.subfaction2)) {
+      return true
+    }
+  }
+  return false
+}
+
+function hasBannedSubFaction(layer) {
+  const bannedSubfactions = [
+    'Support',
+    'AirAssault'
+  ]
+}
+
+function hasUnsafeMap(layer, maps) {
+  let undesiredMap = false
+  for (const map of maps) {
+    if (layer.level.toLowerCase().trim().includes(map.toLowerCase().trim())) {
+      undesiredMap = true
+      break
+    }
+  }
+  return undesiredMap
+}
+
+function hasUnsafeFaction(layer, factions) {
+  let unsafeFaction = false
+  for (let faction of factions) {
+    faction = faction.toLowerCase().trim()
+    if (layer.faction1.toLowerCase().trim() === faction || layer.faction2.toLowerCase().trim() === faction) {
+      console.log(`Found unsafe faction. Layer: ${layer}`)
+      unsafeFaction = true
+      break
+    }
+  }
+  return unsafeFaction
+}
+
+
+const PLA_FACTIONS = Object.freeze([
+  'PLA',
+  'PLANMC',
+  'PLAAGF'
+])
 
 
 const LAYER_FILTERS_ENUM = Object.freeze({
