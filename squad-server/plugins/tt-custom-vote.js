@@ -195,8 +195,8 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
   async mount() {
     this.verbose(2, 'Mounted');
-    this.server.on('CHAT_MESSAGE', this.onChatMessage);
-    this.server.on('NEW_GAME', this.onNewGame);
+    this.server.on(this.server.eventsEnum.chatMessage, this.onChatMessage);
+    this.server.on(this.server.eventsEnum.newGame, this.onNewGame);
     this.mapPool = [];
     this.server.curatedLayerList = []
     this.server.setLayerOnRoundStart = this.options.setLayerOnRoundStart
@@ -209,6 +209,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
 
       if (!this.server.curatedLayerList?.length) {
         this.server.curatedLayerList = await this.loadLayerListFromDisk(this.options.curatedLayerListPath);
+        this.verbose(1, `Loaded layer list from disk. Path: ${this.options.curatedLayerListPath}`)
+      } else {
+        this.verbose(1, 'Loaded layer list from web.')
       }
 
     } catch (err) {
@@ -257,8 +260,13 @@ export default class TTCustomVote extends DiscordBasePlugin {
     }
   }
 
-
-
+  /**
+   * Utility function for parsing the raw layerlist data, and formatting into objects that can be used throughout the plugin.
+   * @param rawData {string} String version of the raw data.
+   * @param delimiter {string}
+   * @param layerListVersion {LAYER_LIST_VERSION_ENUM}
+   * @returns {Promise<*[]>}
+   */
   async parseCuratedList(rawData, delimiter, layerListVersion){
     const parsedLayers = []
     let lines = rawData.split(/\r?\n/);
@@ -369,6 +377,11 @@ export default class TTCustomVote extends DiscordBasePlugin {
     return layers
   }
 
+  /**
+   * Utility function for taking in messages specifically related to mapvotes.
+   * @param info
+   * @returns {Promise<void>}
+   */
   async handleVoteMessages(info) {
     if (
       this.voteInProgress &&
@@ -464,7 +477,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
     const splitMessage = info.message.toLowerCase().split(' ');
     const message = info.message.toLowerCase();
 
-    // Run admin commands
+    /*
+    Chat commands, admin only.
+     */
     if (!this.options.ignoreChats.includes(info.chat)) {
       if (this.options.generatePoolCommands.includes(splitMessage[0])) {
         if (this.mapVoteRunning) {
@@ -598,7 +613,9 @@ export default class TTCustomVote extends DiscordBasePlugin {
               '1-' +
               this.mapPoolSize
           );
-        } else {
+        }
+
+        else {
           const selectedChoice = +splitMessage[1] - 1;
           const selectedLayer = this.mapPool[selectedChoice];
           const message = `Setting next map to: ${selectedLayer.layer} - ${selectedLayer.faction1}_${selectedLayer.subfaction1} vs ${selectedLayer.faction2}_${selectedLayer.subfaction2}`;
@@ -606,19 +623,61 @@ export default class TTCustomVote extends DiscordBasePlugin {
           const command = assembleSetNextRCONCommandFromLayerObject(selectedLayer);
           await this.server.rcon.setNextLayer(command);
         }
-      } else if (splitMessage[0] === this.options.rerollCommand) {
+      }
+
+      else if (splitMessage[0] === this.options.rerollCommand) {
         this.verbose(3, 'Reroll command triggered.');
         if (!this.previousParameters.length) {
           await this.server.rcon.warn(
             playerInfo.steamID,
-            `There were no valid parameters stored from the previous pool generation.\nRunning with default settings instead.`
+            `There were no valid parameters stored from the previous pool generation.\nRunning with default parameters.`
           );
+        }
+
+        const indexesToReroll = []
+
+        for (let i = 1; i < splitMessage.length; i++) {
+          const regex = (/^[0-9]+/)
+          if (regex.test(splitMessage[i])) {
+            if (+splitMessage[i] > 0 && +splitMessage[i] <= this.mapPoolSize && !indexesToReroll.includes(+splitMessage[i])) {
+              indexesToReroll.push(+splitMessage[i])
+            }
+          }
         }
 
         const tempParameters = this.previousParameters;
         tempParameters.unshift(' ');
-        this.mapPool = await this.generatePoolFromParameters(tempParameters, playerInfo);
+
+        // TODO this will have to be changed where the pool reroll is generated *inside* the function.
+
+        const tempPool = await this.generatePoolFromParameters(tempParameters, playerInfo, null, this.server.curatedLayerList);
+        let newPool = []
+
+        for (let i = 0; i < this.mapPoolSize; i++) {
+          if (!indexesToReroll.includes(i + 1)) {
+            newPool[i] = this.mapPool[i]
+          } else {
+            newPool[i] = tempPool[i]
+          }
+        }
+
+        this.mapPool = newPool
+
         await this.sendCurrentPool(playerInfo, `Rerolling map pool with previous parameters:`);
+      }
+
+      else if (splitMessage[0] === "!autoset") {
+        if (splitMessage[1] === "on") {
+          this.server.setLayerOnRoundStart = true
+        }
+        else if (splitMessage[1] === "off") {
+          this.server.setLayerOnRoundStart = false
+        }
+        else {
+          this.server.setLayerOnRoundStart = !this.server.setLayerOnRoundStart
+        }
+        const state = this.server.setLayerOnRoundStart ? "on" : "off"
+        this.server.rcon.warn(playerInfo.steamID, `Autosetting layer on round start has been turned ${state}. Note that this only lasts for the current session of SquadJS, it will reset if SquadJS is restarted.`)
       }
     }
   }
@@ -668,31 +727,6 @@ export default class TTCustomVote extends DiscordBasePlugin {
       );
     }
   }
-
-  /**
-   *
-   * @param message
-   * @returns {null | string}
-   */
-  getLevelFromMapList(message) {
-    let foundMap = null;
-
-    for (const map of this.options.mapList) {
-      if (map.shorthands.includes(message)) {
-        foundMap = map
-        break
-      }
-    }
-    return foundMap;
-  }
-
-  checkIfLayerIsRecentlyPlayed(layer, recentMatches) {
-    recentMatches = recentMatches.map((layer) =>
-      layer.layerClassname.toLowerCase().trim().replace(' ', '')
-    );
-    return recentMatches.includes(layer.layer.toLowerCase().trim());
-  }
-
 
 
   // Generates the pool of maps from the paramaters given to the command. For ex. !genpool Narva Mutaha Yehorivka will generate a pool of those maps
@@ -1060,15 +1094,15 @@ export default class TTCustomVote extends DiscordBasePlugin {
     return newPool;
   }
 
+
   getRandomArrayElement(array) {
     return array[getRandomInt(0, array.length - 1)];
   }
 
-
-
   async tallyVotes() {
     let max = 0;
     let winner = '';
+    let winnerIndex = null
 
     const totals = [];
     let tie = false;
@@ -1285,6 +1319,11 @@ function getFactionFromShorthand(factionShortName, factions) {
   return foundFaction
 }
 
+/**
+ * Retrieves the game mode from a layer.
+ * @param layer
+ * @returns {string}
+ */
 function getGameMode(layer) {
   // Layers are usually formatted as follows:
   // Level(Map)_GameMode_Version
