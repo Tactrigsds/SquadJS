@@ -32,7 +32,7 @@ export default class TTAutoRotation extends BasePlugin {
             autoFogOfWarDelay: {
                 required: false,
                 description: "The delay before fog of war gets disabled.",
-                default: 10 * 1000
+                default: 15 * 1000
             }
         };
     }
@@ -43,14 +43,15 @@ export default class TTAutoRotation extends BasePlugin {
         this.loadRotation = this.loadRotation.bind(this)
         this.setNextLayerInRotation = this.setNextLayerInRotation.bind(this)
         this.rotation = null;
+        this.regex = /^\w+_\w+_\w+\s\w+(?:\+\w+)?\s\w+(?:\+\w+)?$/;
     }
 
     async mount() {
-        this.server.on(this.server.eventsEnum.newGame, this.onNewGame)
-        await new Promise(resolve => setTimeout(resolve, 300))
+        this.server.on(this.server.eventsEnum.databaseUpdated, this.onNewGame)
         this.rotation = await this.loadRotation()
         this.setLayerOnRoundStartInitialState = this.server.setLayerOnRoundStart
         this.server.setLayerOnRoundStart = false
+        await new Promise(resolve => setTimeout(resolve, 500))
         await this.onNewGame()
     }
 
@@ -60,9 +61,14 @@ export default class TTAutoRotation extends BasePlugin {
 
 
     async onNewGame(info) {
+
+        await new Promise(resolve => setTimeout(resolve, 2000))
+
         if (this.options.autoRemovefogOfWar) {
-            setTimeout(() => {
-                this.server.rcon.setFogOfWar(0)
+            setTimeout(async () => {
+                await this.server.rcon.setFogOfWar(0)
+                this.verbose(1, `Turning off fog...`)
+                this.server.warnAllAdmins(`SquadJS: Turning off fog...`)
               }, this.options.autoFogOfWarDelay)
         }
         await this.setNextLayerInRotation()
@@ -72,7 +78,6 @@ export default class TTAutoRotation extends BasePlugin {
         this.server.setLayerOnRoundStart = false
         const matchHistory = this.server.getMatchHistorySinceSessionStart()
         let nextRotationPick;
-
         for (const layer of this.rotation) {
             let layerPlayed = false
 
@@ -80,12 +85,22 @@ export default class TTAutoRotation extends BasePlugin {
             const layerObject = { layer: splitLayer[0], faction1: splitLayer[1], faction2: splitLayer[2] }
 
             for (const playedLayer of matchHistory) {
-                if (layerObject.layer?.toLowerCase() === playedLayer.layerClassname?.toLowerCase()) {
+                if (layerObject.layer?.toLowerCase() === playedLayer.layerClassname?.toLowerCase()
+                  // &&
+                  //   (
+                  //     (playedLayer.faction1 === layerObject.faction1 &&
+                  //   playedLayer.faction1 === layerObject.faction2) ||
+                  //   playedLayer.faction2 === layerObject.faction1 ||
+                  //   playedLayer.faction2 === layerObject.faction2
+                  //   )
+                )
+
+                {
                     layerPlayed = true;
                     break;
                 }
             }
-
+            // TODO don't set the next map in rotation again if it's already been set correctly.
             if (!layerPlayed) {
                 nextRotationPick = layer
                 await this.server.rcon.setNextLayer(layer)
@@ -98,7 +113,7 @@ export default class TTAutoRotation extends BasePlugin {
                 } else {
                     this.server.nextLayerSet = true
                     // await new Promise(resolve => setTimeout(resolve, 30 * 1000))
-                    await this.server.warnAllAdmins(`SquadJS: Auto rotation plugin running, setting next layer in rotation: ${nextRotationPick}`)
+                    await this.server.warnAllAdmins(`SquadJS: TT Auto rotation plugin running, setting next layer in rotation: ${nextRotationPick}`)
                     break
                 }
             }
@@ -124,20 +139,26 @@ export default class TTAutoRotation extends BasePlugin {
         }
         // TODO fix regex so it also accepts no faction specified while another gets a speified subfaction
         // Eg. "
-        const regex = /^\w+\s\w+\+\w+\s\w+\+\w+$/;
-        const regex2 = /^\w+_\w+_\w+\s\w+\s\w+$/;
+        // const regex = /^\w+\s\w+\+\w+\s\w+\+\w+$/;
+        // const regex2 = /^\w+_\w+_\w+\s\w+\s\w+$/;
 
         const tempRotation = data.split(/\r?\n/)
-        const rotation = []
-        for (let i = 0; i < tempRotation.length; i++) {
-            if (regex.test(tempRotation[i]) || regex2.test(tempRotation[i])) {
-                rotation.push(tempRotation[i])
+        const viableRotation = []
+
+        const regex = /^\w+_\w+_\w+\s\w+(?:\+\w+)?\s\w+(?:\+\w+)?$/;
+
+
+        for (const layer of tempRotation) {
+            if (regex.test(layer)) {
+                viableRotation.push(layer)
             }
         }
+
         this.verbose(1, 'Loaded rotation:')
-        console.log(rotation)
+        console.log(viableRotation)
+        this.verbose(1, `Rotation length: ${viableRotation.length}`)
         this.server.setLayerOnRoundStart = false
-        return rotation
+        return viableRotation
     }
 
     async removeInvalidLayer(layer) {
