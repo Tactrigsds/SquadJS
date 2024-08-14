@@ -33,84 +33,12 @@ const alliances = [
   {alliance: 'PAC', factions: ['PLA', 'PLAAGF', 'PLANMC']},
 ]
 
-// const factionData = `
-// Faction,Subfaction,FullName
-// ADF,AirAssault,"3rd Battalion, RAR Battle Group"
-// ADF,CombinedArms,3rd Brigade Battle Group
-// ADF,Mechanized,"1st Battalion, Royal Australian Regiment"
-// BAF,AirAssault,"2nd Battalion, Parachute Regiment Battle Group"
-// BAF,Armored,Queen's Royal Hussars Battle Group
-// BAF,CombinedArms,3rd Division Battle Group
-// BAF,Mechanized,1 Yorks Battle Group
-// CAF,AirAssault,"3rd Battalion, RCR Battle Group"
-// CAF,Motorized,12th Armored Regiment of Canada
-// CAF,Armored,Lord Strathcona's Horse Regiment Battle Group
-// CAF,CombinedArms,1 Canadian Mechanized Brigade Group
-// CAF,Mechanized,"1st Battalion, Royal 22e Régiment"
-// IMF,Armored,Irregular Armored Squadron
-// IMF,CombinedArms,Irregular Battle Group
-// IMF,LightInfantry,Irregular LightInfantry
-// IMF,Mechanized,Irregular Mechanized Platoon
-// INS,Armored,Irregular Armored Squadron
-// INS,CombinedArms,Irregular Battle Group
-// INS,LightInfantry,Irregular LightInfantry
-// INS,Mechanized,Irregular Mechanized Platoon
-// VDV,CombinedArms,7th Guards Mountain Air Assault Division
-// VDV,AirAssault,217th Guards Airborne Regiment
-// VDV,Armored,104th Tank Battalion
-// VDV,Mechanized,108th Guards Air Assault Regiment
-// RGF,Armored,6th Separate Czestochowa Tank Brigade BTG
-// RGF,LightInfantry,1398th Separate Reconnaissance Battalion
-// RGF,CombinedArms,49th Combined Arms Army
-// RGF,Motorized,3rd Motor Rifle Brigade
-// RGF,Mechanized,205th Separate Motor Rifle Brigade
-// TLF,AirAssault,1st Commando Brigade Battle Group
-// TLF,Motorized,51st Motorized Infantry Brigade Battle Group
-// TLF,Armored,4th Armored Brigade Battle Group
-// TLF,CombinedArms,1st Army Battle Group
-// TLF,Support,Land Forces Logistics Command Battle Group
-// TLF,Mechanized,66th Mechanized Infantry Brigade Battle Group
-// MEA,AirAssault,91st Air Assault Battalion
-// MEA,Armored,60th Prince Assur Armored Brigade
-// MEA,CombinedArms,"1st Battalion, Legion of Babylon"
-// MEA,LightInfantry,4th Border Guards
-// MEA,Mechanized,3rd King Qadesh Mechanized Infantry Brigade
-// PLA,AirAssault,161st Air Assault Brigade
-// PLA,Armored,195th Heavy Combined Arms Brigade
-// PLA,CombinedArms,118th Combined Arms Brigade
-// PLA,LightInfantry,149th Combined Arms Brigade
-// PLA,LightInfantry,149th Mountain Infantry Brigade
-// PLA,Motorized,112th Medium Combined Arms Brigade
-// PLA,Motorized,112th Combined Arms Brigade
-// PLANMC,AirAssault,4th Special Combat Battalion
-// PLANMC,Armored,3rd Heavy Battalion
-// PLANMC,Armored,3rd Marine Heavy Battalion
-// PLANMC,CombinedArms,5th Marine Combined Arms Brigade
-// PLANMC,LightInfantry,4th Marine Special Combat Battalion
-// PLANMC,Motorized,7th Marine Medium Battalion
-// PLAAGF,Armored,4th Heavy Battalion
-// PLAAGF,CombinedArms,14th Amphibious Combined Arms Brigade
-// PLAAGF,Mechanized,4th Medium Combined Arms Battalion
-// USA,Mechanized,1st Cavalry Regiment
-// USA,Armored,37th Armored Regiment, 3rd Armored Division
-// USA,CombinedArms,"3rd Brigade Combat Team, 1st Infantry Division"
-// USA,Motorized,2nd Cavalry Stryker Brigade Combat Team
-// USA,LightInfantry,"1st Brigade Combat Team, 10th Mountain Division"
-// USA,AirAssault,"1st Brigade Combat Team, 82nd Airborne Division"
-// USA,Support,497th Combat Sustainment Support Battalion
-// USMC,Armored,"1st Tank Battalion, 1st Marines"
-// USMC,CombinedArms,31st Marine Expeditionary Unit
-// USMC,LightInfantry,1st Marines Regimental Combat Team
-// USMC,Motorized,3rd Light Armored Recon Battalion
-// `;
-
-
 const factionData = `
 Faction,Subfaction,FullName
-ADF,AirAssault,"3rd Battalion, RAR Battle Group"
+ADF,AirAssault,"3rd Battalion, Royal Australian Regiment"
 ADF,CombinedArms,"3rd Brigade Battle Group"
 ADF,Mechanized,"1st Battalion, Royal Australian Regiment"
-BAF,AirAssault,"2nd Battalion, Parachute Regiment Battle Group"
+BAF,AirAssault,"2nd Battalion, Parachute Regiment"
 BAF,Armored,"Queen's Royal Hussars Battle Group"
 BAF,CombinedArms,"3rd Division Battle Group"
 BAF,Mechanized,"1 Yorks Battle Group"
@@ -119,7 +47,7 @@ CAF,AirAssault,"3rd Battalion, Royal Canadian Regiment"
 CAF,Armored,"Lord Strathcona's Horse Regiment"
 CAF,CombinedArms,"1 Canadian Mechanized Brigade Group"
 CAF,Mechanized,"1st Battalion, Royal 22e Régiment"
-CAF,Motorized,"The 12e Régiment Blindé du Canada"
+CAF,Motorized,"12e Régiment Blindé du Canada"
 CAF,Support,"6 Canadian Combat Support Brigade"
 IMF,Armored,"Irregular Armored Squadron"
 IMF,CombinedArms,"Irregular Battle Group"
@@ -155,7 +83,7 @@ TLF,Support,"Land Forces Logistics Command Battle Group"
 MEA,AirAssault,"91st Air Assault Battalion"
 MEA,Armored,"60th Prince Assur Armored Brigade"
 MEA,CombinedArms,"1st Battalion, Legion of Babylon"
-MEA,LightInfantry,"4th Border Guards"
+MEA,LightInfantry,"4th Border Guards Group"
 MEA,Mechanized,"3rd King Qadesh Mechanized Infantry Brigade"
 MEA,Support,"Vizir Hussein 2nd Support Battalion"
 PLA,AirAssault,"161st Air Assault Brigade"
@@ -166,10 +94,11 @@ PLA,Motorized,"112th Medium Combined Arms Brigade"
 PLA,Support,"80th Support Brigade"
 PLANMC,AirAssault,"4th Special Combat Battalion"
 PLANMC,Armored,"3rd Marine Heavy Battalion"
-PLANMC,CombinedArms,"5th Marine Combined Arms Brigade"
+PLANMC,CombinedArms,"5th Marine Brigade"
 PLANMC,LightInfantry,"4th Marine Special Combat Battalion"
 PLANMC,Motorized,"7th Marine Medium Battalion"
 PLANMC,Support,"17th Marine Support Battalion"
+PLANMC,AmphibiousAssault,"5th Marine Combined Arms Brigade"
 PLAAGF,Armored,"9th Heavy Combined Arms Battalion"
 PLAAGF,CombinedArms,"14th Amphibious Combined Arms Brigade"
 PLAAGF,Mechanized,"4th Medium Combined Arms Battalion"
@@ -187,7 +116,6 @@ USMC,Motorized,"3rd Light Armored Recon Battalion"
 USMC,Support,"2nd Marine Logistics Group"
 USMC,AmphibiousAssault,"4th Marines Amphibious Ready Group"
 `;
-
 
 
 const defaultMapList = [
@@ -244,4 +172,4 @@ function getSubfaction(unitName) {
 }
 
 
-export { factions, getSubfaction, subfactionAbbreviations, defaultMapList }
+export { factions, getSubfaction, subfactionAbbreviations, defaultMapList, alliances }
