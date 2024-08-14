@@ -59,7 +59,7 @@ export default class NextLayerSet extends BasePlugin {
   async onNewGame(info) {
     this.nextMapSetCheck = setTimeout(async () => {
       if (!this.server.nextLayerSet) {
-        this.server.warnAllAdmins(`The next map has not been set, please consider map options and starting a vote.`)
+        this.server.warnAllAdmins(`SquadJS: The next map has not been set, please consider map options and starting a vote.`)
         }
       },
       this.options.nextNotSetDelaySeconds * 1000)

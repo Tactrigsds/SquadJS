@@ -12,4 +12,10 @@ yarn.lock
 # IDEs
 .idea/
 .vs/
+/layers*.csv
 /layers.csv
+/layers2.csv
+/layers3.csv
+/layers4.csv
+/layers5.csv
+/layers6.csv
