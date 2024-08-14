@@ -728,7 +728,6 @@ export default class SquadServer extends EventEmitter {
       const mode = matchHistory[i].layerClassname.split("_")[1]
       if (map.includes(jensens) || mode.includes(seedMode)) {
         sessionStartIndex = i
-        break
       }
     }
     return sessionStartIndex === 0 ? matchHistory : matchHistory.slice(0, sessionStartIndex)
