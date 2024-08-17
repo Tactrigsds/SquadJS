@@ -60,8 +60,7 @@ export default class TTAutoRotation extends BasePlugin {
     }
 
 
-    async onNewGame(info) {
-
+    async onNewGame() {
         await new Promise(resolve => setTimeout(resolve, 2000))
 
         if (this.options.autoRemovefogOfWar) {
@@ -71,7 +70,9 @@ export default class TTAutoRotation extends BasePlugin {
                 this.server.warnAllAdmins(`SquadJS: Turning off fog...`)
               }, this.options.autoFogOfWarDelay)
         }
-        await this.setNextLayerInRotation()
+        if (this.options.rotationEnabled) {
+            await this.setNextLayerInRotation()
+        }
     }
 
     async setNextLayerInRotation() {
