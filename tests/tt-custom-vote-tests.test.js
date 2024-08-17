@@ -2,14 +2,17 @@ import {
     checkIfTimeInRange,
     hasSpecificFactionAndSubfactions,
     hasSpecificLayer,
-    filterRecentFactions
+    filterRecentFactions,
+    getLayerListLogPath
 } from '../squad-server/plugins/tt-custom-mapvote.js'
 import * as assert from "assert";
 import fs from "fs";
 import { layerList } from "./layerListLoaded.js";
 // import {recentMatchHistoryTest1} from "./recentMatchesUtils.js";
-import {recentMatchHistoryTest1, recentMatchHistoryTest2} from "./recent-matches-utils.js";
+import { recentMatchHistoryTest1, recentMatchHistoryTest2} from "./recent-matches-utils.js";
+import {formatDateForLogging} from "../squad-server/utils/utils.js";
 
+// console.log(getLayerListLogPath('./'));
 
 
 const mockCurrentTime = new Date(1723222066151)
@@ -113,6 +116,8 @@ async function loadLayerListFromDisk(path, layerListVersion = 'version5', delimi
 describe('checkIfTimeInRange', function() {
     it('should return true if time is within the range', function() {
         const mockCurrentTime = new Date();  // Create a Date object with the desired timestamp
+        mockCurrentTime.setUTCHours(16)
+        mockCurrentTime.setUTCMinutes(30)
         assert.strictEqual(checkIfTimeInRange("16:10", "17:00", mockCurrentTime), true);
     });
 
@@ -227,16 +232,36 @@ describe('Test functionality for ensuring no team will play the same faction mul
         const team2 = "INS_S_CombinedArms"
 
         const fullLayerList = await loadLayerListFromDisk(layerListPath)
-        // console.log(fullLayerList.length)
         const filteredList = filterRecentFactions(fullLayerList, recentMatchHistoryTest2, team1, team2);
-        // console.log(filteredList.length)
         for (const layer of filteredList) {
             assert.equal(PLA_FACTIONS.includes(layer.faction2), false)
             // assert.equal(PLA_FACTIONS.includes(layer.faction1), false)
             // assert.notEqual(actualRecentFaction1g2, layer.faction1, 'Same team got the same faction 2 games after');
             // assert.notEqual(actualRecentFaction2g2, layer.faction2, 'Same team got the same faction 2 games after');
         }
-
-
     });
+});
+
+describe('Test layerlist logging functionality.', function () {
+    const logFolder = './logs'
+    it('should construct a logging file with the current date.', function () {
+        const testDate = new Date(0)
+        const date = new Date()
+        let formattedDate = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`
+        // console.log(testDate.toUTCString());
+        const expectedPath = 'logs\\tt-custom-mapvote_1970-1-1_0.0.log'
+        const actualPath = getLayerListLogPath(logFolder, testDate)
+        assert.equal(expectedPath, actualPath)
+    });
+
+    it('should test that the logging is formatted correctly.', function () {
+        const date = new Date(0)
+        const expectedFormatting = `1970-1-1_0.0.0.0`
+        const actualFormatting = formatDateForLogging(date)
+        assert.equal(expectedFormatting, actualFormatting, `The date formatting didn't match the expected one.`)
+    });
+
+    // it('should initialize log folder', function () {
+    //     initializeLogFolder(logFolder)
+    // });
 });
