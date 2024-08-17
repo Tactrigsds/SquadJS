@@ -2,6 +2,8 @@ import DiscordBasePlugin from "./discord-base-plugin.js";
 import fs from 'fs';
 import {defaultMapList, factions, getSubfaction, subfactionAbbreviations} from '../utils/faction-constants.js'
 import axios from "axios";
+import path from "path";
+import { formatDateForLogging } from "../utils/utils.js";
 
 /*
 KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
@@ -168,6 +170,11 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     startTimeUTC: '22:00',
                     endTimeUTC: '08:00'
                 }
+            },
+            layerListLogFolder: {
+                required: false,
+                description: "",
+                default: './logfolder'
             }
         };
     }
@@ -240,10 +247,14 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.verbose(1, `Full layer list length: ${this.curatedLayerList.length}`)
         this.verbose(1, `Night time layer list length: ${this.nightTimeLayerList.length}`)
         this.verbose(1, `Safe layer list length: ${this.safeLayerList.length}`)
-        // TODO make a function that converts the pool into a "printable" format.
+
+        // Perform logging of layerlists.
+        initializeLogFolder(this.options.layerListLogFolder)
+        this.layerListLogFile = getLayerListLogPath(this.options.layerListLogFolder)
+        this.initializeLogFile(this.layerListLogFile)
+        deleteOldFiles(this.options.layerListLogFolder)
 
         this.mapPool = await this.getPoolFromNightTime([], null, true)
-        this.verbose(3, 'Curated pool on mount: ' + this.mapPool);
     }
 
     async unmount() {
@@ -257,9 +268,61 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
      */
     async setPoolPickOnRoundStart(pool) {
         const mapPick = this.getRandomArrayElement(pool)
+        await this.customVoteLog(layerToStringShortCompact(mapPick), 3)
         if (!mapPick) {this.verbose(1, 'Something went wrong when trying to set the next map on round start.'); return}
-        this.verbose(1, 'Setting map on map start...')
+        this.verbose(1, 'Performing autoset on map start...')
         await this.server.rcon.setNextLayer(assembleSetNextRCONCommandFromLayerObject(mapPick))
+    }
+
+    async customVoteLog(message, prefix = 1) {
+        const prefix1 = `LayerList`
+        const prefix2 = `Pool`
+        const prefix3 = `AutoSet`
+        let activePrefix;
+        switch (prefix) {
+            case 1: {
+                activePrefix = prefix1
+                break
+            }
+            case 2: {
+                activePrefix = prefix2
+                break
+            }
+            case 3: {
+                activePrefix = prefix3
+                break
+            }
+            default: activePrefix = prefix1
+        }
+
+        const currentMap = this.server.currentMap
+        const nextMap = this.server.nextMap
+
+        const currentFaction1 = currentMap.factions.split(" ")[0]
+        const currentFaction2 = currentMap.factions.split(" ")[1]
+
+        const nextFaction1 = nextMap.factions.split(" ")[0]
+        const nextFaction2 = nextMap.factions.split(" ")[1]
+
+        const factionMessage = `currentLayer:${currentMap.layer},currentFaction1:${currentFaction1},currentFaction2:${currentFaction2},nextLayer:${nextMap.layer},nextFaction1:${nextFaction1},nextFaction2:${nextFaction2}`
+
+        const date = new Date()
+        const logMessage = `[${formatDateForLogging(date)}]_[${activePrefix}]_[${factionMessage}]_[${message}]\r\n`
+        fs.appendFile(this.layerListLogFile, logMessage, (err) => {
+            if (err) {
+                this.verbose(1, `Error occured when logging the layerlist.`)
+                this.verbose(1, err)
+            }
+        });
+    }
+
+    initializeLogFile(filePath) {
+        try {
+            fs.writeFileSync(filePath, '')
+        } catch (e) {
+            this.verbose(1, `Error when initializing log file.`)
+            this.verbose(1, e)
+        }
     }
 
     async getPoolFromNightTime(messages = [], playerInfo = null, useTimeout = false) {
@@ -273,6 +336,9 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.verbose(1, 'Generating pool using regular layerlist.')
             pool = await this.generatePoolFromParameters(messages, playerInfo, useTimeout, this.curatedLayerList);
         }
+        await this.customVoteLog(layersArrayToString(pool, layerToStringShortCompact, false), 2)
+        const layerString = layersArrayToString(pool, layerToStringShort, true).trimEnd()
+        this.verbose(2, `Generated pool: \n${layerString}`)
         return pool
     }
 
@@ -397,18 +463,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
 
         return parsedLayers
-    }
-
-    /**
-     * Utility function for converting a layer list into a string. For logging purposes.
-     * @param layerList
-     * @returns {Promise<string>}
-     */
-    async layerListToString(layerList) {
-        const stringLayerList = ``
-        for (const layer of layerList) {
-
-        }
     }
 
 
@@ -795,7 +849,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
     }
 
-
     // Generates the pool of maps from the paramaters given to the command. For ex. !genpool Narva Mutaha Yehorivka will generate a pool of those maps
     async generatePoolFromParameters(splitMessage = [], playerInfo = null, timeout = false, layerList) {
 
@@ -914,8 +967,11 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             globalFilters.mapSize = desiredMapSizes[0];
         }
 
-        if (!globalFilters.gameMode) {
+
+        if (!(globalFilters.gameMode === 'TC')) {
             allLayers = allLayers.filter(layer => !(getGameMode(layer) === 'TC'))
+        }
+        if (!(globalFilters.gameMode === 'Skirmish')) {
             allLayers = allLayers.filter(layer => !(getGameMode(layer) === 'Skirmish'))
         }
 
@@ -1124,7 +1180,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         return newPool;
     }
 
-
     getRandomArrayElement(array) {
         return array[getRandomInt(0, array.length - 1)];
     }
@@ -1227,6 +1282,84 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     }
 }
 
+function layerToStringFull(layer) {
+    return `
+    Level: ${layer.level},
+    Layer: ${layer.layer},
+    Size: ${layer.size},
+    Faction 1: ${layer.faction1},
+    Faction 2: ${layer.faction2},
+    Subfaction 1: ${layer.subfaction1},
+    Subfaction 2: ${layer.subfaction2},
+    Logistics Score 1: ${layer.logisticsScore1.toFixed(2)},
+    Logistics Score 2: ${layer.logisticsScore2.toFixed(2)},
+    Transportation Score 1: ${layer.transportationScore1.toFixed(2)},
+    Transportation Score 2: ${layer.transportationScore2.toFixed(2)},
+    Anti-Infantry Score 1: ${layer.antiInfantryScore1.toFixed(2)},
+    Anti-Infantry Score 2: ${layer.antiInfantryScore2.toFixed(2)},
+    Armor Score 1: ${layer.armorScore1.toFixed(2)},
+    Armor Score 2: ${layer.armorScore2.toFixed(2)},
+    Zero Score 1: ${layer.zeroScore1.toFixed(2)},
+    Zero Score 2: ${layer.zeroScore2.toFixed(2)},
+    Balance Differential: ${layer.balanceDifferential.toFixed(2)}
+    `.trim();
+}
+
+
+function layerToStringShort(layer) {
+    return `
+    Layer:${layer.layer}\nFaction1:${layer.faction1}+${layer.subfaction1}\nFaction2:${layer.faction2}+${layer.subfaction2}\nBalanceDifferential:${layer.balanceDifferential.toFixed(2)}\n
+    `.trimStart()
+}
+
+function layerToStringShortCompact(layer) {
+    return `
+    Layer:${layer.layer},
+    Faction1:${layer.faction1}+${layer.subfaction1},
+    Faction2:${layer.faction2}+${layer.subfaction2},
+    BalanceDifferential:${layer.balanceDifferential.toFixed(2)}
+    `.trim().replace(/\s+/g, '')
+}
+
+
+function layersArrayToString(layers, layerToStringFunction = layerToStringShortCompact,  useNewLine = true) {
+    if (useNewLine) {
+        return layers.map(layerToStringFunction).join('\r\n')
+    } else {
+        return layers.map(layerToStringFunction).join(';')
+    }
+}
+
+function getLayerListLogPath(logFolder, initDate = new Date()) {
+    const dateString = `${initDate.getUTCFullYear()}-${initDate.getUTCMonth() + 1}-${initDate.getUTCDate()}_${initDate.getUTCHours()}.${initDate.getUTCMinutes()}`
+    return path.join(logFolder, `tt-custom-mapvote_${dateString}.log`)
+}
+
+function initializeLogFolder(logFolder, plugin) {
+    if (fs.existsSync(logFolder)) {
+        if (plugin) {
+            this.verbose(2, `Logfolder already exists`)
+        }
+        return
+    }
+    try {
+        fs.mkdirSync(logFolder)
+        if (plugin) {
+            plugin.verbose(1, `Successfully initialized log folder`)
+        } else {
+            console.log('Initialized logfolder')
+        }
+    } catch (err) {
+        if (plugin) {
+            plugin.verbose(1, `Error occured when initializing log folder.`)
+            plugin.verbose(1, err)
+        } else {
+            console.log('Error occured when initializing log folder.')
+            console.log(err)
+        }
+    }
+}
+
 
 function getRandomMapSizeDefaults() {
     const rng = getRandomInt(0, 100);
@@ -1267,10 +1400,6 @@ function getRandomInt(min, max) {
 function checkIfMapIsRecentlyPlayed(layer, recentMatches) {
     const processedLayer = layer.level.toLowerCase().replace(/\s/g, '');
     return recentMatches.some((match) => processedLayer.includes(match.levelTrimmed));
-}
-
-
-function checkIfFactionRecentlyPlayed() {
 }
 
 
@@ -1434,6 +1563,44 @@ class RegularPickSlotParameters {
 }
 
 
+function deleteOldFiles(directory) {
+    try {
+        // Read all files in the directory
+        const files = fs.readdirSync(directory);
+
+        // Map the files to an array of objects containing the file name and its modification time
+        const fileDetails = files.map(file => {
+            const filePath = path.join(directory, file);
+            const stats = fs.statSync(filePath);
+            return {
+                file: filePath,
+                mtime: stats.mtime
+            };
+        });
+
+        // Sort the files by modification time (most recent first)
+        fileDetails.sort((a, b) => b.mtime - a.mtime);
+
+        // Slice the array to keep only the 10 most recent files
+        const filesToKeep = fileDetails.slice(0, 10);
+
+        // Get the files to delete (those not in the filesToKeep array)
+        const filesToDelete = fileDetails.slice(10);
+
+        // Delete the files
+        filesToDelete.forEach(fileDetail => {
+            fs.unlinkSync(fileDetail.file);
+            // console.log(`Deleted: ${fileDetail.file}`);
+        });
+        console.log(`Deleted old log files...`)
+
+    } catch (err) {
+        console.error('Error while deleting old files:', err);
+    }
+}
+
+
+
 function checkIfLayerIsRecentlyPlayed(layer, recentMatches) {
     recentMatches = recentMatches.map((layer) =>
         layer.layerClassname.toLowerCase().trim().replace(' ', '')
@@ -1466,7 +1633,7 @@ function checkIfTimeInRange(start, end, currentTime = new Date()) {
 }
 
 function generateSafeLayerList(allLayers) {
-    const bannedMaps = [
+    const safeListBannedMaps = [
         'Basrah',
         'Anvil',
         'Tallil',
@@ -1508,7 +1675,7 @@ function generateSafeLayerList(allLayers) {
 
     allLayers = allLayers.filter(layer => !hasSpecificFactionAndSubfactions(layer, bannedSpecificSubfactions))
     allLayers = allLayers.filter(layer => getGameMode(layer) === "RAAS")
-    allLayers = allLayers.filter(layer => !hasSpecificMap(layer, bannedMaps))
+    allLayers = allLayers.filter(layer => !hasSpecificMap(layer, safeListBannedMaps))
     allLayers = allLayers.filter(layer => !hasSpecificSubFactions(layer, bannedGlobalSubfactions))
     allLayers = allLayers.filter(layer => !hasSpecificFaction(layer, bannedFactions))
     allLayers = allLayers.filter(layer => !hasSpecificLayer(layer, bannedLayers))
@@ -1793,11 +1960,16 @@ const LAYER_LIST_VERSION_ENUM = Object.freeze({
 
 export {
     generateSafeLayerList,
+    generateNightLayerList,
     checkIfTimeInRange,
     hasSpecificLayer,
     hasSpecificFactionAndSubfactions,
     hasSpecificMap,
     hasSpecificFaction,
     hasSymmetricalSubfactions,
-    filterRecentFactions
+    filterRecentFactions,
+    getLayerListLogPath,
+    initializeLogFolder,
+    layerToStringFull,
+    layerToStringShort,
 };
