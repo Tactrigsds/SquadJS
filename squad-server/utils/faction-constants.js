@@ -172,4 +172,10 @@ function getSubfaction(unitName) {
 }
 
 
-export { factions, getSubfaction, subfactionAbbreviations, defaultMapList, alliances }
+export {
+  factions,
+  defaultMapList,
+  subfactionAbbreviations,
+  alliances,
+  getSubfaction,
+}

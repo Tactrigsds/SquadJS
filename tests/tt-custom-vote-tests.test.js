@@ -3,14 +3,14 @@ import {
     hasSpecificFactionAndSubfactions,
     hasSpecificLayer,
     filterRecentFactions,
-    getLayerListLogPath
+    // getLayerListLogPath,
 } from '../squad-server/plugins/tt-custom-mapvote.js'
 import * as assert from "assert";
 import fs from "fs";
 import { layerList } from "./layerListLoaded.js";
 // import {recentMatchHistoryTest1} from "./recentMatchesUtils.js";
 import { recentMatchHistoryTest1, recentMatchHistoryTest2} from "./recent-matches-utils.js";
-import {formatDateForLogging} from "../squad-server/utils/utils.js";
+import { getFormattedDateForLog, getLayerListLogPath} from "../squad-server/utils/utils.js";
 
 // console.log(getLayerListLogPath('./'));
 
@@ -246,19 +246,16 @@ describe('Test layerlist logging functionality.', function () {
     const logFolder = './logs'
     it('should construct a logging file with the current date.', function () {
         const testDate = new Date(0)
-        const date = new Date()
-        let formattedDate = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`
-        // console.log(testDate.toUTCString());
-        const expectedPath = 'logs\\tt-custom-mapvote_1970-1-1_0.0.log'
-        const actualPath = getLayerListLogPath(logFolder, testDate)
+        const expectedPath = 'logs\\tt-custom-mapvote_1970.01.01-00.00.log'
+        const actualPath = getLayerListLogPath(logFolder, testDate, `The date formatting didn't match the epxected formatting.`)
         assert.equal(expectedPath, actualPath)
     });
 
     it('should test that the logging is formatted correctly.', function () {
         const date = new Date(0)
-        const expectedFormatting = `1970-1-1_0.0.0.0`
-        const actualFormatting = formatDateForLogging(date)
-        assert.equal(expectedFormatting, actualFormatting, `The date formatting didn't match the expected one.`)
+        const expectedFormatting = `1970-01-01_00.00.00.0`
+        const actualFormatting = getFormattedDateForLog(date)
+        assert.equal(expectedFormatting, actualFormatting, `The date formatting didn't match the expected formatting.`)
     });
 
     // it('should initialize log folder', function () {

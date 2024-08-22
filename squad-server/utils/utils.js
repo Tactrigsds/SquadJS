@@ -1,3 +1,4 @@
+import path from "path";
 
 
 function getRandomArrayElement(array) {
@@ -9,17 +10,34 @@ function getRandomInt(min, max) {
 }
 
 
-function formatDateForFile(date = new Date()) {
-    const dateString = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}_${date.getUTCHours()}.${date.getUTCMinutes()}`
+function getFormattedDateForFile(date = new Date()) {
+    const paddedMonth = `${date.getUTCMonth() + 1}`.padStart(2, '0')
+    const paddedDay = `${date.getUTCDate()}`.padStart(2, '0')
+    const paddedHours = `${date.getUTCHours()}`.padStart(2, '0')
+    const paddedMinutes = `${date.getUTCMinutes()}`.padStart(2, '0')
+    return `${date.getUTCFullYear()}.${paddedMonth}.${paddedDay}-${paddedHours}.${paddedMinutes}`
 }
 
-function formatDateForLogging(date = new Date()) {
-    return `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}_${date.getUTCHours()}.${date.getUTCMinutes()}.${date.getUTCSeconds()}.${date.getUTCMilliseconds()}`
+function getFormattedDateForLog(date = new Date()) {
+    const paddedMonth = `${date.getUTCMonth() + 1}`.padStart(2, '0')
+    const paddedDay = `${date.getUTCDate()}`.padStart(2, '0')
+    const paddedHours = `${date.getUTCHours()}`.padStart(2, '0')
+    const paddedMinutes = `${date.getUTCMinutes()}`.padStart(2, '0')
+    const paddedSeconds = `${date.getUTCSeconds()}`.padStart(2, '0')
+
+    return `${date.getUTCFullYear()}-${paddedMonth}-${paddedDay}_${paddedHours}.${paddedMinutes}.${paddedSeconds}.${date.getUTCMilliseconds()}`
 }
+
+function getLayerListLogPath(logFolder, initDate = new Date()) {
+    const dateString = `${getFormattedDateForFile(initDate)}`
+    return path.join(logFolder, `tt-custom-mapvote_${dateString}.log`)
+}
+
 
 export {
-    formatDateForLogging,
-    formatDateForFile,
+    getFormattedDateForLog,
+    getFormattedDateForFile,
     getRandomInt,
-    getRandomArrayElement
+    getRandomArrayElement,
+    getLayerListLogPath
 }

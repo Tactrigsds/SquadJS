@@ -3,7 +3,10 @@ import fs from 'fs';
 import {defaultMapList, factions, getSubfaction, subfactionAbbreviations} from '../utils/faction-constants.js'
 import axios from "axios";
 import path from "path";
-import { formatDateForLogging } from "../utils/utils.js";
+import {
+    getFormattedDateForLog,
+    getLayerListLogPath
+} from "../utils/utils.js";
 
 /*
 KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
@@ -214,7 +217,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.verbose(2, 'Mounted');
         this.server.on(this.server.eventsEnum.chatMessage, this.onChatMessage);
         this.server.on(this.server.eventsEnum.newGame, this.onNewGame);
-        this.mapPool = [];
+        this.server.on(this.server.eventsEnum.databaseUpdated, this.onDatabaseUpdated)
         this.curatedLayerList = []
         this.server.setLayerOnRoundStart = this.options.setLayerOnRoundStart
         let curatedLayerList;
@@ -241,6 +244,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
 
         this.fullLayerList = curatedLayerList.filter(layer => !hasSpecificMap(layer, ['AlBasrah']))
+        this.fullLayerList = curatedLayerList.filter(layer => !hasSpecificLayer(layer, ['Manicouagan_AAS_v3']))
+
         this.curatedLayerList = this.fullLayerList
         this.safeLayerList = generateSafeLayerList(this.fullLayerList)
         this.nightTimeLayerList = generateNightLayerList(this.fullLayerList)
@@ -249,18 +254,63 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.verbose(1, `Safe layer list length: ${this.safeLayerList.length}`)
 
         // Perform logging of layerlists.
-        initializeLogFolder(this.options.layerListLogFolder)
-        this.layerListLogFile = getLayerListLogPath(this.options.layerListLogFolder)
-        this.initializeLogFile(this.layerListLogFile)
-        deleteOldFiles(this.options.layerListLogFolder)
+        try {
+            this.layerListLogFile = getLayerListLogPath(this.options.layerListLogFolder)
+            initializeLogFolder(this.options.layerListLogFolder)
+            this.initializeLogFile(this.layerListLogFile)
+            deleteOldFiles(this.options.layerListLogFolder)
+        } catch (err) {
+            this.verbose(1, `Something went wrong when initializing layer list logging`)
+            console.log(err)
+        }
 
+        this.mapPool = []
         this.mapPool = await this.getPoolFromNightTime([], null, true)
     }
 
     async unmount() {
         this.server.removeEventListener(this.onChatMessage);
         this.server.removeEventListener(this.onNewGame);
+        this.server.removeEventListener(this.onDatabaseUpdated)
     }
+
+    async onNewGame() {
+        this.mapVoteWinner = null;
+        this.previousParameters = [];
+        this.server.nextLayerSet = false
+        this.adminTriggeringPoolGen = { admin: null, steamID: null }
+
+        if (this.server.setLayerOnRoundStart) {
+            if (this.server.currentMap.layer.includes('Jensen') || this.server.currentMap.layer.includes('Seed')) {
+                return
+            }
+        }
+
+        // TODO change to use a different variable, perhaps something like "autosetMap", which the nextlayerset plugin can use
+        // To then change the "this.server.nexltayerset" variable once the map set is detected.
+        setTimeout(async () => {
+            if (this.server.setLayerOnRoundStart) {
+                if (this.server.currentMap.layer.includes('Jensen') || this.server.currentMap.layer.includes('Seed')) {
+                    return
+                }
+            }
+
+            const tempPool = await this.generatePoolFromParameters([], null, false, this.safeLayerList);
+            this.server.warnAllAdmins('SquadJS: Setting random pick from map pool as a fallback.')
+            await this.setPoolPickOnRoundStart(tempPool)
+            setTimeout(() => {
+                this.server.nextLayerSet = false
+            }, 10 * 1000)
+        }, 90 * 1000)
+    }
+
+    async onDatabaseUpdated() {
+        this.mapPool = []
+        setTimeout(async () => {
+            this.mapPool = await this.getPoolFromNightTime()
+        }, 10 * 1000)
+    }
+
 
     /**
      *  Utility function for getting and setting a random map upon match start.
@@ -274,10 +324,13 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         await this.server.rcon.setNextLayer(assembleSetNextRCONCommandFromLayerObject(mapPick))
     }
 
+
     async customVoteLog(message, prefix = 1) {
         const prefix1 = `LayerList`
         const prefix2 = `Pool`
         const prefix3 = `AutoSet`
+
+        // TODO change this into an enum, or find another solution entirely.
         let activePrefix;
         switch (prefix) {
             case 1: {
@@ -307,7 +360,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         const factionMessage = `currentLayer:${currentMap.layer},currentFaction1:${currentFaction1},currentFaction2:${currentFaction2},nextLayer:${nextMap.layer},nextFaction1:${nextFaction1},nextFaction2:${nextFaction2}`
 
         const date = new Date()
-        const logMessage = `[${formatDateForLogging(date)}]_[${activePrefix}]_[${factionMessage}]_[${message}]\r\n`
+        const logMessage = `[${getFormattedDateForLog(date)}]_[${activePrefix}]_[${factionMessage}]_[${message}]\r\n`
         fs.appendFile(this.layerListLogFile, logMessage, (err) => {
             if (err) {
                 this.verbose(1, `Error occured when logging the layerlist.`)
@@ -343,32 +396,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     }
 
 
-    async onNewGame() {
-        this.mapVoteWinner = null;
-        this.previousParameters = [];
-        this.server.nextLayerSet = false
-        this.adminTriggeringPoolGen = { admin: null, steamID: null }
-        this.mapPool = []
-
-        if (this.server.setLayerOnRoundStart) {
-            if (this.server.currentMap.layer.includes('Jensen') || this.server.currentMap.layer.includes('Seed')) {
-                return
-            }
-        }
-
-        this.mapPool = await this.getPoolFromNightTime()
-
-        // TODO change to use a different variable, perhaps something like "autosetMap", which the nextlayerset plugin can use
-        // To then change the "this.server.nexltayerset" variable once the map set is detected.
-        setTimeout(async () => {
-            const tempPool = await this.generatePoolFromParameters([], null, false, this.safeLayerList);
-            this.server.warnAllAdmins('SquadJS: Setting random pick from map pool as a fallback.')
-            await this.setPoolPickOnRoundStart(tempPool)
-            setTimeout(() => {
-                this.server.nextLayerSet = false
-            }, 10 * 1000)
-        }, 90 * 1000)
-    }
 
     /**
      * Utility function for parsing the raw layerlist data, and formatting into objects that can be used throughout the plugin.
@@ -1180,9 +1207,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         return newPool;
     }
 
-    getRandomArrayElement(array) {
-        return array[getRandomInt(0, array.length - 1)];
-    }
 
     async tallyVotes() {
         let max = 0;
@@ -1280,6 +1304,11 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.voteOptions = [];
         this.mapVoteRunning = false;
     }
+
+    getRandomArrayElement(array) {
+        return array[getRandomInt(0, array.length - 1)];
+    }
+
 }
 
 function layerToStringFull(layer) {
@@ -1330,10 +1359,6 @@ function layersArrayToString(layers, layerToStringFunction = layerToStringShortC
     }
 }
 
-function getLayerListLogPath(logFolder, initDate = new Date()) {
-    const dateString = `${initDate.getUTCFullYear()}-${initDate.getUTCMonth() + 1}-${initDate.getUTCDate()}_${initDate.getUTCHours()}.${initDate.getUTCMinutes()}`
-    return path.join(logFolder, `tt-custom-mapvote_${dateString}.log`)
-}
 
 function initializeLogFolder(logFolder, plugin) {
     if (fs.existsSync(logFolder)) {
@@ -1565,10 +1590,8 @@ class RegularPickSlotParameters {
 
 function deleteOldFiles(directory) {
     try {
-        // Read all files in the directory
         const files = fs.readdirSync(directory);
 
-        // Map the files to an array of objects containing the file name and its modification time
         const fileDetails = files.map(file => {
             const filePath = path.join(directory, file);
             const stats = fs.statSync(filePath);
@@ -1581,16 +1604,10 @@ function deleteOldFiles(directory) {
         // Sort the files by modification time (most recent first)
         fileDetails.sort((a, b) => b.mtime - a.mtime);
 
-        // Slice the array to keep only the 10 most recent files
-        const filesToKeep = fileDetails.slice(0, 10);
-
-        // Get the files to delete (those not in the filesToKeep array)
         const filesToDelete = fileDetails.slice(10);
 
-        // Delete the files
         filesToDelete.forEach(fileDetail => {
             fs.unlinkSync(fileDetail.file);
-            // console.log(`Deleted: ${fileDetail.file}`);
         });
         console.log(`Deleted old log files...`)
 
@@ -1652,7 +1669,6 @@ function generateSafeLayerList(allLayers) {
         'Sanxian_RAAS_v1',
         'Sanxian_RAAS_v2',
         'Mutaha_AAS_v2'
-
     ]
 
     const bannedFactions = [
@@ -1968,7 +1984,6 @@ export {
     hasSpecificFaction,
     hasSymmetricalSubfactions,
     filterRecentFactions,
-    getLayerListLogPath,
     initializeLogFolder,
     layerToStringFull,
     layerToStringShort,

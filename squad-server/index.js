@@ -27,7 +27,7 @@ export default class SquadServer extends EventEmitter {
     this.id = options.id;
     this.options = options;
     this.warnMessageCharLimit = 215
-    this.serverBroadcastCharLimit = 200
+    this.serverBroadcastCharLimit = 198
     this.voteMessageBaseLength = 64
     this.warnMessagePersistenceTimeMilliSeconds = 6100
     this.matchHistory = []
