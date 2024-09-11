@@ -19,3 +19,4 @@ yarn.lock
 /layers4.csv
 /layers5.csv
 /layers6.csv
+/.husky/
