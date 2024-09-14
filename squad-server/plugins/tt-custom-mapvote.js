@@ -1,6 +1,6 @@
 import DiscordBasePlugin from "./discord-base-plugin.js";
 import fs from 'fs';
-import {defaultMapList, factions, getSubfaction, subfactionAbbreviations} from '../utils/faction-constants.js'
+import {defaultMapList, factionMap, getSubfaction, subfactionAbbreviations} from '../utils/faction-constants.js'
 import axios from "axios";
 import path from "path";
 import {
@@ -930,7 +930,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         for (const parameter of parameters) {
             this.verbose(2, `Parameter: ${parameter}`);
             const level = getLevelFromMapList(parameter, this.mapList);
-            const faction = getFactionFromShorthand(parameter, factions);
+            const faction = getFactionFromShorthand(parameter, factionMap);
             if (level && desiredMaps.length < this.mapPoolSize) {
                 desiredMaps.push(level);
                 validParameters.push(parameter);
@@ -1802,8 +1802,8 @@ function filterRecentFactions(layerList, matchHistory, currentFaction1, currentF
         if (match.faction1 && match.subfaction1 && match.faction2 && match.subfaction2) {
             history.push({
                 layer: match?.layer,
-                faction1: getFactionFromLongName(match.faction1, factions)?.short,
-                faction2: getFactionFromLongName(match.faction2, factions)?.short,
+                faction1: getFactionFromLongName(match.faction1, factionMap)?.short,
+                faction2: getFactionFromLongName(match.faction2, factionMap)?.short,
                 subfaction1: getSubfaction(match.subfaction1),
                 subfaction2: getSubfaction(match.subfaction2)
             })

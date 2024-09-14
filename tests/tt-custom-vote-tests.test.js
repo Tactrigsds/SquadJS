@@ -115,10 +115,13 @@ async function loadLayerListFromDisk(path, layerListVersion = 'version5', delimi
 
 describe('checkIfTimeInRange', function() {
     it('should return true if time is within the range', function() {
-        const mockCurrentTime = new Date();  // Create a Date object with the desired timestamp
+        const mockCurrentTime = new Date();
         mockCurrentTime.setUTCHours(16)
         mockCurrentTime.setUTCMinutes(30)
         assert.strictEqual(checkIfTimeInRange("16:10", "17:00", mockCurrentTime), true);
+        mockCurrentTime.setUTCHours(2)
+        mockCurrentTime.setUTCMinutes(40)
+        assert.strictEqual(checkIfTimeInRange("02:39", "02:41", mockCurrentTime), true)
     });
 
     it('should return false if time is outside the range', function() {

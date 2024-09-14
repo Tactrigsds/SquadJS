@@ -15,7 +15,7 @@ export default class Rcon extends EventEmitter {
     this.connected = false;
     this.autoReconnect = false;
     this.autoReconnectDelay = options.autoReconnectDelay || 5000;
-    this.connectionRetry;
+    // this.connectionRetry;
     this.msgId = 20;
     this.responseString = { id: 0, body: "" };
   }

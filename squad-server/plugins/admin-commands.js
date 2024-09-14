@@ -1,5 +1,5 @@
 import DiscordBasePlugin from './discord-base-plugin.js';
-import { factions, getSubfaction, subfactionAbbreviations} from "../utils/faction-constants.js";
+import { factionMap, getSubfaction, subfactionAbbreviations} from "../utils/faction-constants.js";
 
 export default class AdminCommands extends DiscordBasePlugin {
   static get description() {
@@ -485,13 +485,13 @@ export default class AdminCommands extends DiscordBasePlugin {
 
     for (let i = 0; i < matchHistory.length && i < mapsToSendCount; ++i) {
       const data = matchHistory[i]
-      const team1 = factions.get(data.team1)
-      const team2 = factions.get(data.team2)
+      const team1 = factionMap.get(data.team1)
+      const team2 = factionMap.get(data.team2)
 
       const subfaction1 = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam1));
       const subfaction2 = subfactionAbbreviations.get(getSubfaction(data.subFactionTeam2));
 
-      const winnerTeam = factions.get(data.winnerTeam)
+      const winnerTeam = factionMap.get(data.winnerTeam)
       const endTime = new Date(+data.endTime - (60 * 60 * 4 * 1000))
 
 

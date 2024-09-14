@@ -60,8 +60,6 @@ export default class AltChecker extends DiscordBasePlugin {
         this.getPlayerByName = this.getPlayerByName.bind(this);
         this.getPlayersByUsernameDatabase = this.getPlayersByUsernameDatabase.bind(this);
 
-        this.DBLogPlugin;
-
         this.warn = (steamid, msg) => { this.server.rcon.warn(steamid, msg); };
         this.kick = (eosID, reason) => { this.server.rcon.execute(`AdminKick "${eosID}" ${reason}`); };
     }

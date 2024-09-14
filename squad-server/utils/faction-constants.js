@@ -1,5 +1,5 @@
 
-const factions = new Map([
+const factionMap = new Map([
   ["United States Army", "USA"],
   ["United States Marine Corps", "USMC"],
   ["Turkish Land Forces", "TLF"],
@@ -117,7 +117,6 @@ USMC,Support,"2nd Marine Logistics Group"
 USMC,AmphibiousAssault,"4th Marines Amphibious Ready Group"
 `;
 
-
 const defaultMapList = [
   { "name": "Al Basrah", "shorthands": ["basrah", "albasrah", "al_basrah", "basra"] },
   { "name": "Anvil", "shorthands": ["anvil"] },
@@ -171,11 +170,24 @@ function getSubfaction(unitName) {
   return unitToSubfaction[unitName] ? unitToSubfaction[unitName] : (unitName ? 'CombinedArms' : null);
 }
 
+function getFactionFromLongName(factionFullName, factions) {
+    let foundFaction = ''
+    for (const [longName, shortName] of factions) {
+        if (longName?.toLowerCase().trim() === factionFullName?.toLowerCase().trim()) {
+            foundFaction = { short: shortName, long: longName }
+            break
+        }
+    }
+    return foundFaction
+}
+
+
 
 export {
-  factions,
+  factionMap,
   defaultMapList,
   subfactionAbbreviations,
   alliances,
   getSubfaction,
+  getFactionFromLongName
 }
