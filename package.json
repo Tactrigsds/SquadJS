@@ -13,7 +13,6 @@
   "scripts": {
     "prepare": "husky install",
     "lint": "eslint --fix . && prettier --write \"./**/*.js\"",
-    "lint-staged": "lint-staged",
     "build-config": "node squad-server/scripts/build-config-file.js",
     "build-readme": "node squad-server/scripts/build-readme.js",
     "build-all": "node squad-server/scripts/build-config-file.js && node squad-server/scripts/build-readme.js"
