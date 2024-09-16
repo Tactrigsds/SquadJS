@@ -38,7 +38,7 @@ export default class SquadServer extends EventEmitter {
     this.nextLayerAlt = null;
     this.nextFactions = null;
     this.currentFactions = null;
-    this.setLayerOnRoundStart = false
+    this.autoSetLayerOnRoundStart = false
     // this.nextLayerSet = true
 
 

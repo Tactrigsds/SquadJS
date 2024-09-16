@@ -160,10 +160,13 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 description: "The version of the layerlist parser to use. Temporary.",
                 default: 'version2'
             },
-            setLayerOnRoundStart: {
+            autoSetLayerOnRoundStart: {
                 required: false,
                 description: "Whether to set a random layer on match start, used as a fallback instead of the inbuilt layerlist on the server.",
-                default: false
+                default: {
+                    enabled: false,
+                    // auto
+                }
             },
             useNightHours: {
                 required: false,
@@ -219,7 +222,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.server.on(this.server.eventsEnum.newGame, this.onNewGame);
         this.server.on(this.server.eventsEnum.databaseUpdated, this.onDatabaseUpdated)
         this.curatedLayerList = []
-        this.server.setLayerOnRoundStart = this.options.setLayerOnRoundStart
+        this.server.autoSetLayerOnRoundStart = this.options.autoSetLayerOnRoundStart
         let curatedLayerList;
 
         try {
@@ -242,8 +245,9 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.verbose(1, 'Unable to generate map pool.');
             this.verbose(1, err);
         }
-
-        this.fullLayerList = curatedLayerList.filter(layer => !hasSpecificMap(layer, ['AlBasrah']))
+        // Globally removes Al Basrah from all lists
+        this.fullLayerList = curatedLayerList.filter(layer => !hasSpecificMap(layer, [getLevelFromMapList('basrah', this.mapList)]))
+        // Globablly removes Manicougan_AAS_V3 from all lists.
         this.fullLayerList = curatedLayerList.filter(layer => !hasSpecificLayer(layer, ['Manicouagan_AAS_v3']))
 
         this.curatedLayerList = this.fullLayerList
@@ -280,7 +284,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.server.nextLayerSet = false
         this.adminTriggeringPoolGen = { admin: null, steamID: null }
 
-        if (this.server.setLayerOnRoundStart) {
+        if (this.server.autoSetLayerOnRoundStart) {
             if (this.server.currentMap.layer.includes('Jensen') || this.server.currentMap.layer.includes('Seed')) {
                 return
             }
@@ -289,7 +293,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         // TODO change to use a different variable, perhaps something like "autosetMap", which the nextlayerset plugin can use
         // To then change the "this.server.nexltayerset" variable once the map set is detected.
         setTimeout(async () => {
-            if (this.server.setLayerOnRoundStart) {
+            if (this.server.autoSetLayerOnRoundStart) {
                 if (this.server.currentMap.layer.includes('Jensen') || this.server.currentMap.layer.includes('Seed')) {
                     return
                 }
@@ -816,15 +820,15 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
             else if (splitMessage[0] === "!autoset") {
                 if (splitMessage[1] === "on") {
-                    this.server.setLayerOnRoundStart = true
+                    this.server.autoSetLayerOnRoundStart = true
                 }
                 else if (splitMessage[1] === "off") {
-                    this.server.setLayerOnRoundStart = false
+                    this.server.autoSetLayerOnRoundStart = false
                 }
                 else {
-                    this.server.setLayerOnRoundStart = !this.server.setLayerOnRoundStart
+                    this.server.autoSetLayerOnRoundStart = !this.server.autoSetLayerOnRoundStart
                 }
-                const state = this.server.setLayerOnRoundStart ? "on" : "off"
+                const state = this.server.autoSetLayerOnRoundStart ? "on" : "off"
                 this.server.rcon.warn(playerInfo.steamID, `Autosetting layer on round start has been turned ${state}. Note that this only lasts for the current session of SquadJS, it will reset if SquadJS is restarted.`)
             }
         }
@@ -1282,6 +1286,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         const broadcastStr = options.map((option, index) => `${index + 1}: ${option}\n`).join(' ');
         this.verbose(3, 'Server broadcast length: ' + broadcastStr.length);
         const message = {
+            // content: `\`\`\`fix\n${this.info.player.name} has started a vote: \n${broadcastStr}\n\`\`\``
             content: `\`\`\`fix\n${this.info.player.name} has started a vote: \n${broadcastStr}\n\`\`\``
         };
         await this.channel.send(message);
@@ -1651,7 +1656,7 @@ function checkIfTimeInRange(start, end, currentTime = new Date()) {
 
 function generateSafeLayerList(allLayers) {
     const safeListBannedMaps = [
-        'Basrah',
+        'AlBasrah',
         'Anvil',
         'Tallil',
         'Skorpo',
@@ -1708,7 +1713,7 @@ function generateSafeLayerList(allLayers) {
 
 function generateNightLayerList(allLayers) {
     const bannedMaps = [
-        'Basrah',
+        'AlBasrah',
         'Anvil',
         'Tallil',
         'Skorpo',

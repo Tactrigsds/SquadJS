@@ -49,8 +49,8 @@ export default class TTAutoRotation extends BasePlugin {
     async mount() {
         this.server.on(this.server.eventsEnum.databaseUpdated, this.onNewGame)
         this.rotation = await this.loadRotation()
-        this.setLayerOnRoundStartInitialState = this.server.setLayerOnRoundStart
-        this.server.setLayerOnRoundStart = false
+        this.autoSetLayerOnRoundStartInitialState = this.server.autoSetLayerOnRoundStart
+        this.server.autoSetLayerOnRoundStart = false
         await new Promise(resolve => setTimeout(resolve, 500))
         await this.onNewGame()
     }
@@ -76,7 +76,7 @@ export default class TTAutoRotation extends BasePlugin {
     }
 
     async setNextLayerInRotation() {
-        this.server.setLayerOnRoundStart = false
+        this.server.autoSetLayerOnRoundStart = false
         const matchHistory = this.server.getMatchHistorySinceSessionStart()
         let nextRotationPick;
         for (const layer of this.rotation) {
@@ -158,7 +158,7 @@ export default class TTAutoRotation extends BasePlugin {
         this.verbose(1, 'Loaded rotation:')
         console.log(viableRotation)
         this.verbose(1, `Rotation length: ${viableRotation.length}`)
-        this.server.setLayerOnRoundStart = false
+        this.server.autoSetLayerOnRoundStart = false
         return viableRotation
     }
 

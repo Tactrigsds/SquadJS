@@ -5,7 +5,9 @@ const factionMap = new Map([
   ["Turkish Land Forces", "TLF"],
   ["Russian Ground Forces", "RGF"],
   ["People’s Liberation Army Navy Marine Corps", "PLANMC"],
+  ["PLA Navy Marine Corps", "PLANMC"],
   ["People’s Liberation Army Amphibious Ground Force", "PLAAGF"],
+  ["PLA Amphibious Ground Forces", "PLAAGF"],
   ["People's Liberation Army", "PLA"],
   ["Canadian Armed Forces", "CAF"],
   ["Insurgent Forces", "INS"],
@@ -66,7 +68,6 @@ VDV,CombinedArms,"7th Guards Mountain Air Assault Division"
 VDV,Armored,"104th Tank Battalion"
 VDV,Mechanized,"108th Guards Air Assault Regiment"
 VDV,Support,"150th Support Battalion"
-VDV,AmphibiousAssault,"7th Guards Mountain Air Assault Division"
 RGF,Armored,"6th Separate Tank Brigade"
 RGF,LightInfantry,"1398th Separate Reconnaissance Battalion"
 RGF,CombinedArms,"49th Combined Arms Army"
