@@ -84,6 +84,8 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
       16
     );
 
+    // await this.server.getLayerInfo()
+
     const embedobj = {
       title: this.server.serverName,
       fields: [
@@ -93,20 +95,36 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
         },
         {
           name: 'Current Layer',
-          value: `\`\`\`${layerName || 'Unknown'}\`\`\``,
+          value: `> **${this.server.currentLayer?.name || this.server.currentLayer?.layer || this.server.currentMap.layer || 'Unknown'}**`,
           inline: true
         },
         {
           name: 'Next Layer',
-          value: `\`\`\`${
-            this.server.nextLayer?.name ||
-            (this.server.nextLayerToBeVoted ? 'To be voted' : 'Unknown')
-          }\`\`\``,
+          value: `> **${
+                this.server.nextLayer?.name ||
+                (this.server.nextLayerToBeVoted ? 'To be voted' : this.server.nextLayer?.layer || this.server.nextMap?.layer || "Unknown")
+              }**`,
+          inline: true
+        },
+        {
+          name: '\u200B',
+          value: '\u200B'
+        },
+        {
+          name: 'Current Factions',
+          value: `1. ${this.server.currentMap.factions.split(" ")[0]}\n` +
+                 `2. ${this.server.currentMap.factions.split(" ")[1]}`,
+          inline: true
+        },
+        {
+          name: "Next Factions",
+          value: `1. ${this.server.nextMap.factions.split(" ")[0]}\n` +
+                 `2. ${this.server.nextMap.factions.split(" ")[1]}`,
           inline: true
         }
       ],
       color: color,
-      footer: { text: COPYRIGHT_MESSAGE },
+      // footer: { text: COPYRIGHT_MESSAGE },
       timestamp: new Date(),
       // Dont use CDN for images, use raw.githubusercontent.com.
       // Also not updated for 8.x properly.
@@ -125,7 +143,7 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
 
     await this.options.discordClient.user.setActivity(
       `(${this.server.a2sPlayerCount}/${this.server.publicSlots}) ${
-        this.server.currentLayer?.name || 'Unknown'
+        this.server.currentMap.layer || 'Unknown'
       }`,
       { type: 4 }
     );
