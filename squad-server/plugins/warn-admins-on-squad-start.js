@@ -3,7 +3,7 @@ import BasePlugin from './base-plugin.js';
 export default class WarnAdminsOnSquadStart extends BasePlugin {
     static get description() {
         return (
-            "Plugin meant to allow users to kill themselves(i.e double swap themselves) so they can get rid of the running man bug"
+            "Plugin that warns admins when the server has been restarted."
         );
     }
     static get defaultEnabled() {

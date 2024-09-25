@@ -458,7 +458,16 @@ export default class AdminCommands extends DiscordBasePlugin {
         await this.listRecentMatchDataLong(playerInfo)
         break
 
+      // TODO THIS IS REALLY STUPID AND NEEDS TO BE FIXED.
       case '!factionswap':
+        await this.swapFactions(playerInfo)
+        break
+
+      case '!swapfactions':
+        await this.swapFactions(playerInfo)
+        break
+
+      case '!swapfaction':
         await this.swapFactions(playerInfo)
         break
 

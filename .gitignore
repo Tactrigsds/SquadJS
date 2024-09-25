@@ -13,10 +13,10 @@ yarn.lock
 .idea/
 .vs/
 /layers*.csv
-/layers.csv
-/layers2.csv
-/layers3.csv
-/layers4.csv
-/layers5.csv
-/layers6.csv
+/layerlistv1.csv
+/layerlistv2.csv
+/layerlistv3.csv
+/layerlistv4.csv
+/layerlistv5.csv
+/layerlistv6.csv
 /.husky/

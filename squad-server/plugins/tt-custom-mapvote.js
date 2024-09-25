@@ -165,7 +165,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 description: "Whether to set a random layer on match start, used as a fallback instead of the inbuilt layerlist on the server.",
                 default: {
                     enabled: false,
-                    // auto
+                    autoSetSafeMapAfterSeeding: false
                 }
             },
             useNightHours: {
@@ -209,7 +209,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.previousParameters = []
         this.adminTriggeringPoolGen = { admin: null, steamID: null }
         this.mapList = this.options.mapList ? this.options.mapList : defaultMapList
-        this.usedNightTimeLayers = false
 
         if (!Object.values(LAYER_LIST_VERSION_ENUM).includes(this.options.layerlistVersion)) {
             throw Error('Config does not include a valid layerlist version.')
@@ -232,13 +231,13 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
             if (!this.options.useWebEndpoint.enabled || !curatedLayerList?.length) {
                 curatedLayerList = await this.loadLayerListFromDisk(this.options.curatedLayerListPath);
-                if (curatedLayerList.length) {
-                    this.verbose(1, `Successfully loaded layer list from disk. Path: ${this.options.curatedLayerListPath}`)
-                } else {
-                    this.verbose(1, `Layer list is empty.`)
-                }
             } else {
                 this.verbose(1, 'Loaded layer list from web.')
+            }
+            if (!curatedLayerList && !curatedLayerList.length) {
+                this.verbose(1, 'Plugin was unable to load the layer list from both the web and from disk.')
+            } else {
+                this.verbose(1, 'Loaded ' + curatedLayerList.length + ' layers from the layer list.');
             }
 
         } catch (err) {
@@ -246,14 +245,18 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.verbose(1, err);
         }
         // Globally removes Al Basrah from all lists
-        this.fullLayerList = curatedLayerList.filter(layer => !hasSpecificMap(layer, [getLevelFromMapList('basrah', this.mapList)]))
-        // Globablly removes Manicougan_AAS_V3 from all lists.
-        this.fullLayerList = curatedLayerList.filter(layer => !hasSpecificLayer(layer, ['Manicouagan_AAS_v3']))
-
+        const globalBannedMaps = ['AlBasrah']
+        const globallyBannedLayers = ['Manicouagan_AAS_v3']
+        this.verbose(1, `Removing globally banned layers and maps...`)
+        this.verbose(2, `Full layer list length before: ${curatedLayerList.length}`)
+        curatedLayerList = curatedLayerList.filter(layer => !hasSpecificMap(layer, globalBannedMaps))
+        curatedLayerList = curatedLayerList.filter(layer => !hasSpecificLayer(layer, globallyBannedLayers))
+        this.verbose(2, `Full layer list length after: ${curatedLayerList.length}`)
+        this.fullLayerList = curatedLayerList
         this.curatedLayerList = this.fullLayerList
         this.safeLayerList = generateSafeLayerList(this.fullLayerList)
         this.nightTimeLayerList = generateNightLayerList(this.fullLayerList)
-        this.verbose(1, `Full layer list length: ${this.curatedLayerList.length}`)
+        this.verbose(1, `Full layer list length: ${this.fullLayerList.length}`)
         this.verbose(1, `Night time layer list length: ${this.nightTimeLayerList.length}`)
         this.verbose(1, `Safe layer list length: ${this.safeLayerList.length}`)
 
@@ -269,7 +272,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
 
         this.mapPool = []
-        this.mapPool = await this.getPoolFromNightTime([], null, true)
+        this.mapPool = await this.generatePoolByTimeRange([], null, true)
     }
 
     async unmount() {
@@ -311,7 +314,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     async onDatabaseUpdated() {
         this.mapPool = []
         setTimeout(async () => {
-            this.mapPool = await this.getPoolFromNightTime()
+            this.mapPool = await this.generatePoolByTimeRange([], null, false)
         }, 10 * 1000)
     }
 
@@ -382,7 +385,15 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
     }
 
-    async getPoolFromNightTime(messages = [], playerInfo = null, useTimeout = false) {
+    /**
+     * Generates a pool depending on if it's day time or in nighttime, using different layerlists,
+     * a more restrictive/"safer" one for nighttime pools.
+     * @param messages
+     * @param playerInfo
+     * @param useTimeout
+     * @returns {Promise<*[]>}
+     */
+    async generatePoolByTimeRange(messages = [], playerInfo = null, useTimeout = false) {
         const nightTimeStart = this.options.useNightHours.startTimeUTC
         const nightTimeEnd = this.options.useNightHours.endTimeUTC
         let pool;
@@ -514,7 +525,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.verbose(1, 'Error occured when loading the layers file');
             this.verbose(2, err);
         }
-        this.verbose(1, 'Loaded ' + layers.length + ' layers from the layer list.');
+        this.verbose(1, 'Succesfully loaded layerlist from disk.')
         return layers;
     }
 
@@ -662,7 +673,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 this.poolGenerationTime = currentTime;
 
                 try {
-                    this.mapPool = await this.getPoolFromNightTime(splitMessage, playerInfo, false);
+                    this.mapPool = await this.generatePoolByTimeRange(splitMessage, playerInfo, false);
                 } catch (err) {
                     await this.server.rcon.warn(playerInfo.steamID, 'Something went wrong when generating pool');
                     this.verbose(1, 'Error occured when sending pool.');
@@ -776,6 +787,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 }
             }
 
+            // Reroll command, creates a new pool with last used parameters.
+            // Keeps specific pool picks if the index of a pick is given as a parameter to the command.
             else if (splitMessage[0] === this.options.rerollCommand) {
                 this.verbose(3, 'Reroll command triggered.');
                 if (!this.previousParameters.length) {
@@ -799,10 +812,10 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 const tempParameters = this.previousParameters;
                 tempParameters.unshift(' ');
 
-                // TODO this will have to be changed where the pool reroll is generated *inside* the function.
+                // TODO this will have to be changed where the pool reroll is generated *inside* the pool generation function.
 
                 // const tempPool = await this.generatePoolFromParameters(tempParameters, playerInfo, false, this.curatedLayerList);
-                const tempPool = await this.getPoolFromNightTime(tempParameters, playerInfo, false)
+                const tempPool = await this.generatePoolByTimeRange(tempParameters, playerInfo, false)
                 const newPool = []
 
                 for (let i = 0; i < this.mapPoolSize; i++) {
@@ -818,6 +831,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 await this.sendCurrentPool(playerInfo, `Rerolling map pool with previous parameters:`);
             }
 
+            // Toggle autoset on or off via a command.
             else if (splitMessage[0] === "!autoset") {
                 if (splitMessage[1] === "on") {
                     this.server.autoSetLayerOnRoundStart = true
@@ -858,7 +872,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             const assembledLayer = `${i + 1}. ${pool[i].layer} - ${pool[i].faction1}_${pool[i].subfaction1} vs ${pool[i].faction2}_${pool[i].subfaction2}`;
             message += assembledLayer;
             message += '\n\n';
-            // Only allow 2 layers per warn message, otherwise the message will become too long and not send.
+            // Only allow 2 layers per warn message, otherwise the message will become too long and the Squad Server/RCON will not accept the message.
             if (i % 2 === 0) {
                 warnList.push(message);
                 message = '\n\n';
