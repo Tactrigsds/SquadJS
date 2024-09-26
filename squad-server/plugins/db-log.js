@@ -95,10 +95,22 @@ export default class DBLog extends BasePlugin {
       team2: {
           type: DataTypes.STRING
       },
+      team1Short: {
+          type: DataTypes.STRING
+      },
+      team2Short: {
+          type: DataTypes.STRING
+      },
       subFactionTeam1: {
           type: DataTypes.STRING
       },
       subFactionTeam2: {
+          type: DataTypes.STRING
+      },
+      subFactionShortTeam1: {
+          type: DataTypes.STRING
+      },
+      subFactionShortTeam2: {
           type: DataTypes.STRING
       },
       winnerTeam: {
@@ -718,14 +730,23 @@ export default class DBLog extends BasePlugin {
 
   async roundEnded(info) {
     const isDraw = (!info.winner || !info.loser)
+
+    const [team1, team2] = this.server.currentMap.factions.split(" ");
+    const subfaction1 = team1.split("+")[1]
+    const subfaction2 = team2.split("+")[1]
+
     await this.models.Match.update(
       {
         winnerTeam: info.winner?.faction,
         winnerTeamID: +info.winner?.team,
-        team1: +info.winner?.team == 1 ? info.winner.faction : info.loser?.faction,
-        team2: +info.winner?.team == 2 ? info.winner.faction : info.loser?.faction,
-        subFactionTeam1: +info.winner?.team == 1 ? info.winner.subfaction : info.loser?.subfaction,
-        subFactionTeam2: +info.winner?.team == 2 ? info.winner.subfaction : info.loser?.subfaction,
+        team1: +info.winner?.team === 1 ? info.winner.faction : info.loser?.faction,
+        team2: +info.winner?.team === 2 ? info.winner.faction : info.loser?.faction,
+        team1Short: team1,
+        team2Short: team2,
+        subFactionTeam1: +info.winner?.team === 1 ? info.winner.subfaction : info.loser?.subfaction,
+        subFactionTeam2: +info.winner?.team === 2 ? info.winner.subfaction : info.loser?.subfaction,
+        subFactionShortTeam1: subfaction1,
+        subFactionShortTeam2: subfaction2,
         tickets: +(+info.winner?.tickets - +info.loser?.tickets),
         isDraw: isDraw
       },
