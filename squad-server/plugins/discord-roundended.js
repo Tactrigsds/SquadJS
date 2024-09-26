@@ -1,6 +1,4 @@
 import DiscordBasePlugin from './discord-base-plugin.js';
-import {factionMap, subfactionAbbreviations, getSubfaction, getFactionFromLongName} from "../utils/faction-constants.js";
-
 
 export default class DiscordRoundEnded extends DiscordBasePlugin {
   static get description() {
@@ -55,10 +53,13 @@ export default class DiscordRoundEnded extends DiscordBasePlugin {
       return;
     }
 
-    const winnerFactionShort = getFactionFromLongName(info.winner.faction, factionMap)?.short
-    const winnerSubfactionShort = getSubfaction(info.winner.subfaction)
-    const loserFactionShort = getFactionFromLongName(info.loser.faction, factionMap)?.short
-    const loserSubfactionShort = getSubfaction(info.loser.subfaction)
+    const team1 = this.server.currentMap.factions.split(" ")[0]
+    const team2 = this.server.currentMap.factions.split(" ")[1]
+
+    const winnerTeam = info.winner.team === '1' ? team1 : team2
+    const loserTeam = info.winner.team !== "1" ? team1 : team2
+
+
     await this.sendDiscordMessage({
       embed: {
         title: 'Round Ended',
@@ -67,11 +68,11 @@ export default class DiscordRoundEnded extends DiscordBasePlugin {
         fields: [
           {
             name: `Team ${info.winner.team} Won`,
-            value: `${winnerFactionShort}+${winnerSubfactionShort}\n\n${info.winner.subfaction}\n ${info.winner.faction}\n won with ${info.winner.tickets} tickets.\n`
+            value: `${winnerTeam}\n\n${info.winner.subfaction}\n ${info.winner.faction}\n won with ${info.winner.tickets} tickets.\n`
           },
           {
             name: `Team ${info.loser.team} Lost`,
-            value: `${loserFactionShort}+${loserSubfactionShort}\n\n${info.loser.subfaction}\n ${info.loser.faction}\n lost with ${info.loser.tickets} tickets.`
+            value: `${loserTeam}\n\n${info.loser.subfaction}\n ${info.loser.faction}\n lost with ${info.loser.tickets} tickets.`
           },
           {
             name: 'Ticket Difference',
