@@ -179,7 +179,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             },
             layerListLogFolder: {
                 required: false,
-                description: "",
+                description: "The folder that the layerlist logs will be stored in.",
                 default: './logfolder'
             }
         };
@@ -196,6 +196,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.tallyVotes = this.tallyVotes.bind(this);
         this.callVote = this.callVote.bind(this);
         this.clearVote = this.clearVote.bind(this);
+        this.generatePoolByTimeRange = this.generatePoolByTimeRange.bind(this)
+        this.onDatabaseUpdated = this.onDatabaseUpdated.bind(this)
 
         this.mapvote = false;
         this.voteInProgress = false;
@@ -397,20 +399,21 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         const nightTimeStart = this.options.useNightHours.startTimeUTC
         const nightTimeEnd = this.options.useNightHours.endTimeUTC
         let pool;
+        let usedList;
         if (this.options.useNightHours.enabled && checkIfTimeInRange(nightTimeStart, nightTimeEnd, new Date())) {
             this.verbose(1, 'Generating pool using nighttime layerlist.')
             pool = await this.generatePoolFromParameters(messages, playerInfo, useTimeout, this.nightTimeLayerList)
+            usedList = 'NightTimeList'
         } else {
             this.verbose(1, 'Generating pool using regular layerlist.')
             pool = await this.generatePoolFromParameters(messages, playerInfo, useTimeout, this.curatedLayerList);
+            usedList = 'DayTimeList'
         }
         await this.customVoteLog(layersArrayToString(pool, layerToStringShortCompact, false), 2)
         const layerString = layersArrayToString(pool, layerToStringShort, true).trimEnd()
         this.verbose(2, `Generated pool: \n${layerString}`)
         return pool
     }
-
-
 
     /**
      * Utility function for parsing the raw layerlist data, and formatting into objects that can be used throughout the plugin.
