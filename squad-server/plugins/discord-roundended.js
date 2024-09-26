@@ -53,12 +53,10 @@ export default class DiscordRoundEnded extends DiscordBasePlugin {
       return;
     }
 
-    const team1 = this.server.currentMap.factions.split(" ")[0]
-    const team2 = this.server.currentMap.factions.split(" ")[1]
-
-    const winnerTeam = info.winner.team === '1' ? team1 : team2
-    const loserTeam = info.winner.team !== "1" ? team1 : team2
-
+    // Retrieve the factions and subfactions in their short from RCON.
+    const [team1, team2] = this.server.currentMap.factions.split(" ");
+    const winnerTeam = info.winner.team === '1' ? team1 : team2;
+    const loserTeam = info.winner.team === '1' ? team2 : team1;
 
     await this.sendDiscordMessage({
       embed: {
