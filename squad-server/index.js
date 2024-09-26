@@ -830,26 +830,4 @@ export default class SquadServer extends EventEmitter {
    * @returns {Promise<void>}
    */
 
-  async getLayerInfo() {
-    const currentMapInfo = await this.rcon.getCurrentMap()
-    const nextMapInfo = await this.rcon.getNextMap()
-
-    let nextLayer = await Layers.getLayerByClassname(nextMapInfo.layer)
-    let currentLayer = await Layers.getLayerByClassname(currentMapInfo.layer)
-
-    if (!currentLayer) { currentLayer = await Layers.getLayerByName(currentMapInfo.layer)}
-    if (!nextLayer) { nextLayer = await Layers.getLayerByName(nextMapInfo.layer)}
-
-    if (!currentLayer) { currentLayer = await Layers.getLayerByLayerID(currentMapInfo.layer)}
-    if (!nextLayer) { nextLayer = await Layers.getLayerByLayerID(nextMapInfo.layer)}
-
-    this.currentLayer = currentLayer
-    this.nextLayer = nextLayer
-
-    this.currentMap = currentMapInfo
-    this.nextMap = nextMapInfo
-  }
-
-
-
 }

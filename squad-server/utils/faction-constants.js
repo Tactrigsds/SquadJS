@@ -16,6 +16,7 @@ const factionMap = new Map([
   ["Middle Eastern Alliance", "MEA"],
   ["British Armed Forces", "BAF"],
   ["Australian Defence Force", "ADF"],
+  ["Western Private Military Contractors", "WPMC"]
 ])
 
 const subfactionAbbreviations = new Map([
@@ -116,6 +117,9 @@ USMC,LightInfantry,"1st Marines Regimental Combat Team"
 USMC,Motorized,"3rd Light Armored Recon Battalion"
 USMC,Support,"2nd Marine Logistics Group"
 USMC,AmphibiousAssault,"4th Marines Amphibious Ready Group"
+WPMC,AirAssault,"Murk Water Air Wing"
+WPMC,CombinedArms,"Manticore Security Task Force"
+WPMC,LightInfantry,"Overwatch 6 Patrol Group"
 `;
 
 const defaultMapList = [

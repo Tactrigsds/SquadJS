@@ -124,7 +124,6 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
         }
       ],
       color: color,
-      // footer: { text: COPYRIGHT_MESSAGE },
       timestamp: new Date(),
       // Dont use CDN for images, use raw.githubusercontent.com.
       // Also not updated for 8.x properly.
@@ -143,7 +142,7 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
 
     await this.options.discordClient.user.setActivity(
       `(${this.server.a2sPlayerCount}/${this.server.publicSlots}) ${
-        this.server.currentMap.layer || 'Unknown'
+        this.server.currentMap?.layer.replace("_", " ") || 'Unknown'
       }`,
       { type: 4 }
     );
