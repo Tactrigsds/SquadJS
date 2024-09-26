@@ -19,7 +19,7 @@ export default class WarnAdminsOnSquadStart extends BasePlugin {
     }
 
     async mount() {
-        this.server.warnAllAdmins(`SquadJS has been restarted.`)
+        this.server.warnAllAdmins(`AUTOMATIC WARNING TO ADMINS: \nSquadJS has been restarted.`)
     }
 
     async unmount() {}
