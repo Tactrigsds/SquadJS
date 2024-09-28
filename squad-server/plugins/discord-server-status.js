@@ -84,8 +84,7 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
       16
     );
 
-    // await this.server.getLayerInfo()
-
+    // TODO need to change this so it can handle the next layer not being set.
     const embedobj = {
       title: this.server.serverName,
       fields: [
@@ -112,14 +111,14 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
         },
         {
           name: 'Current Factions',
-          value: `1. ${this.server.currentMap.factions.split(" ")[0]}\n` +
-                 `2. ${this.server.currentMap.factions.split(" ")[1]}`,
+          value: `1. ${this.server.currentMap.factions?.split(" ")[0]}\n` +
+                 `2. ${this.server.currentMap.factions?.split(" ")[1]}`,
           inline: true
         },
         {
           name: "Next Factions",
-          value: `1. ${this.server.nextMap.factions.split(" ")[0]}\n` +
-                 `2. ${this.server.nextMap.factions.split(" ")[1]}`,
+          value: `1. ${this.server.nextMap.factions?.split(" ")[0]}\n` +
+                 `2. ${this.server.nextMap.factions?.split(" ")[1]}`,
           inline: true
         }
       ],
