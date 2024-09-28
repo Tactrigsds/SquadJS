@@ -181,6 +181,25 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 required: false,
                 description: "The folder that the layerlist logs will be stored in.",
                 default: './logfolder'
+            },
+            assymetryDifferential: {
+                required: false,
+                description: '',
+                default: {
+                    regular: 3.0,
+                    nightTime: 2.0,
+                    safe: 2.0
+                }
+            },
+            globallyBannedLayers: {
+                required: false,
+                description: 'Layers that are filtered out from all types of layerlists.',
+                default: []
+            },
+            globallyBannedMaps: {
+                required: false,
+                description: 'Maps that are filtered out from all types of layerlists.',
+                default: []
             }
         };
     }
@@ -223,44 +242,60 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.server.on(this.server.eventsEnum.newGame, this.onNewGame);
         this.server.on(this.server.eventsEnum.databaseUpdated, this.onDatabaseUpdated)
         this.curatedLayerList = []
-        this.server.autoSetLayerOnRoundStart = this.options.autoSetLayerOnRoundStart
-        let curatedLayerList;
+        this.server.autoSetLayerOnRoundStart = this.options.autoSetLayerOnRoundStart.enabled
+        let rawLayerList;
 
         try {
             if (this.options.useWebEndpoint.enabled) {
-                curatedLayerList = await this.loadLayerListFromWebEndpoint(this.options.useWebEndpoint.endpoint)
+                rawLayerList = await this.loadLayerListFromWebEndpoint(this.options.useWebEndpoint.endpoint)
             }
 
-            if (!this.options.useWebEndpoint.enabled || !curatedLayerList?.length) {
-                curatedLayerList = await this.loadLayerListFromDisk(this.options.curatedLayerListPath);
+            if (!this.options.useWebEndpoint.enabled || !rawLayerList?.length) {
+                rawLayerList = await this.loadLayerListFromDisk(this.options.curatedLayerListPath);
             } else {
                 this.verbose(1, 'Loaded layer list from web.')
             }
-            if (!curatedLayerList && !curatedLayerList.length) {
-                this.verbose(1, 'Plugin was unable to load the layer list from both the web and from disk.')
+            if (!rawLayerList && !rawLayerList.length) {
+                this.verbose(1, 'Plugin was unable to load the layerlist from either the web endpoint or from disk.')
             } else {
-                this.verbose(1, 'Loaded ' + curatedLayerList.length + ' layers from the layer list.');
+                this.verbose(1, 'Loaded ' + rawLayerList.length + ' layers from the layer list.');
             }
 
         } catch (err) {
             this.verbose(1, 'Unable to generate map pool.');
             this.verbose(1, err);
         }
-        // Globally removes Al Basrah from all lists
-        const globalBannedMaps = ['AlBasrah']
-        const globallyBannedLayers = ['Manicouagan_AAS_v3']
+
+        // Remove globally banned layers and maps.
         this.verbose(1, `Removing globally banned layers and maps...`)
-        this.verbose(2, `Full layer list length before: ${curatedLayerList.length}`)
-        curatedLayerList = curatedLayerList.filter(layer => !hasSpecificMap(layer, globalBannedMaps))
-        curatedLayerList = curatedLayerList.filter(layer => !hasSpecificLayer(layer, globallyBannedLayers))
-        this.verbose(2, `Full layer list length after: ${curatedLayerList.length}`)
-        this.fullLayerList = curatedLayerList
-        this.curatedLayerList = this.fullLayerList
-        this.safeLayerList = generateSafeLayerList(this.fullLayerList)
-        this.nightTimeLayerList = generateNightLayerList(this.fullLayerList)
-        this.verbose(1, `Full layer list length: ${this.fullLayerList.length}`)
+        this.verbose(2, `Full layer list length before: ${rawLayerList.length}`)
+        rawLayerList = rawLayerList.filter(layer => !hasSpecificMap(layer, this.options.globallyBannedMaps))
+        rawLayerList = rawLayerList.filter(layer => !hasSpecificLayer(layer, this.options.globallyBannedLayers))
+        this.verbose(2, `Full layer list length after: ${rawLayerList.length}`)
+        // generateRegularLayerList(rawLayerList, this.verbose)
+
+        // Apply balance filter.
+        // TODO check layerlist version here.
+        // this.verbose(1, `Applying balance differential filter of: ${this.options.balanceDifferential}.`)
+        // const lengthBefore = rawLayerList.length
+        // rawLayerList = rawLayerList.filter(layer => Math.abs(layer.balanceDifferential) < this.options.balanceDifferential)
+        // const layersRemoved = lengthBefore - rawLayerList.length
+        // this.verbose(2, `Layers removed: ${layersRemoved}`)
+        // this.verbose(1, `Layer count after applying balance filter: ${rawLayerList.length}`)
+
+
+        // Apply assymmetry filter.
+        this.verbose(1, `Applying assymetry filter of: `)
+        // TODO make a new function for generating the regular list.
+
+
+        // this.rawLayerList = rawLayerList
+        this.curatedLayerList = generateRegularLayerList(rawLayerList, this.options.balanceDifferential, this.options.assymetryDifferential.regular)
+        this.safeLayerList = generateSafeLayerList(rawLayerList)
+        this.nightTimeLayerList = generateNightLayerList(rawLayerList)
+        this.verbose(1, `Regular layer list length: ${this.curatedLayerList.length}`)
         this.verbose(1, `Night time layer list length: ${this.nightTimeLayerList.length}`)
-        this.verbose(1, `Safe layer list length: ${this.safeLayerList.length}`)
+        this.verbose(1, `Safe/AutoSet layer list length: ${this.safeLayerList.length}`)
 
         // Perform logging of layerlists.
         try {
@@ -419,11 +454,10 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
      * Utility function for parsing the raw layerlist data, and formatting into objects that can be used throughout the plugin.
      * @param rawData {string} String version of the raw data.
      * @param delimiter {string} The character used to deliminate the rows in the csv files.
-     * @param layerListVersion {string}
-     * @param balanceDifferential {number} A number representing the minimum balance referential for a layer to be kept in the layerlist.
+     * @param layerListVersion {string} The version of layerlist, used to decide how to parse the CSV file.
      * @returns {Promise<*[]>}
      */
-    async parseCuratedList(rawData, delimiter, layerListVersion, balanceDifferential = 2.5){
+    async parseCuratedList(rawData, delimiter, layerListVersion){
         const parsedLayers = []
         let lines = rawData.split(/\r?\n/);
 
@@ -467,7 +501,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             }
         }
 
-        else {
+        else if (layerListVersion === LAYER_LIST_VERSION_ENUM.VERSION2_TO_6) {
             const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
             // Remove csv header.
             lines = lines.slice(1).map(line => line.trim())
@@ -499,8 +533,41 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     balanceDifferential: parseFloat(line[17]),
                 }
 
-                if (Math.abs(layer.balanceDifferential) > this.options.balanceDifferential) {
+                parsedLayers.push(layer)
+            }
+        }
+
+        else if (layerListVersion === LAYER_LIST_VERSION_ENUM.VERSION7) {
+            const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
+            // Remove csv header.
+            lines = lines.slice(1).map(line => line.trim())
+            for (let line of lines) {
+                if (!regex.test(line)) {
                     continue
+                }
+
+                line = line.split(delimiter).map(line => line.trim())
+
+                const layer = {
+                    level: line[0],
+                    layer: line[1],
+                    size: line[2],
+                    faction1: line[3],
+                    faction2: line[10],
+                    subfaction1: line[4],
+                    subfaction2: line[11],
+                    logisticsScore1: parseFloat(line[5]),
+                    logisticsScore2: parseFloat(line[12]),
+                    transportationScore1: parseFloat(line[6]),
+                    transportationScore2: parseFloat(line[13]),
+                    antiInfantryScore1: parseFloat(line[7]),
+                    antiInfantryScore2: parseFloat(line[14]),
+                    armorScore1: parseFloat(line[8]),
+                    armorScore2: parseFloat(line[15]),
+                    zeroScore1: parseFloat(line[9]),
+                    zeroScore2: parseFloat(line[16]),
+                    balanceDifferential: parseFloat(line[17]),
+                    asymmetryScore: parseFloat(line[18]),
                 }
 
                 parsedLayers.push(layer)
@@ -514,21 +581,20 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     /**
      * Utility function that loads the layer list from disk.
      * @param path File path to the csv data that is to be loaded.
-     * @param layerListVersion
-     * @param delimiter
      * @returns {Promise<*[]>}
      */
 
-    async loadLayerListFromDisk(path, layerListVersion = LAYER_LIST_VERSION_ENUM.VERSION5, delimiter) {
+    async loadLayerListFromDisk(path) {
         let layers = []
         try {
             const data = fs.readFileSync(path, 'utf-8');
+            this.verbose('Loaded file')
             layers = await this.parseCuratedList(data, this.options.csvDelimiter, this.options.layerlistVersion)
         } catch (err) {
-            this.verbose(1, 'Error occured when loading the layers file');
+            this.verbose(1, `Error occured when loading the layers file from path: ${path}`);
             this.verbose(2, err);
         }
-        this.verbose(1, 'Succesfully loaded layerlist from disk.')
+        this.verbose(1, `Succesfully loaded layerlist from disk. Path: ${path}`)
         return layers;
     }
 
@@ -1671,6 +1737,25 @@ function checkIfTimeInRange(start, end, currentTime = new Date()) {
     return startTotalMinutes <= currentTotalMinutes && currentTotalMinutes <= endTotalMinutes;
 }
 
+function generateRegularLayerList(allLayers, balanceDifferential, assymmetryDifferential) {
+
+    console.log(`Regular list: Applying balance differential filter of: ${balanceDifferential}.`)
+    allLayers = allLayers.filter(layer => Math.abs(layer.balanceDifferential) < balanceDifferential)
+    console.log(`Regular list: Applying assymetry score of ${assymmetryDifferential}`)
+    allLayers = allLayers.filter(layer => Math.abs(layer.asymmetryScore) < assymmetryDifferential)
+
+            // this.verbose(1, `Applying balance differential filter of: ${this.options.balanceDifferential}.`)
+        // const lengthBefore = rawLayerList.length
+        // rawLayerList = rawLayerList.filter(layer => Math.abs(layer.balanceDifferential) < this.options.balanceDifferential)
+        // const layersRemoved = lengthBefore - rawLayerList.length
+        // this.verbose(2, `Layers removed: ${layersRemoved}`)
+        // this.verbose(1, `Layer count after applying balance filter: ${rawLayerList.length}`)
+
+    // TODO figure out a way to add logging and logging levels here.
+    return allLayers
+}
+
+
 function generateSafeLayerList(allLayers) {
     const safeListBannedMaps = [
         'AlBasrah',
@@ -1989,10 +2074,8 @@ const SUBFACTION_SYMMETRY_ENUM = Object.freeze({
 
 const LAYER_LIST_VERSION_ENUM = Object.freeze({
     VERSION2: 'version2',
-    VERSION3: 'version3',
-    VERSION4: 'version4',
-    VERSION5: 'version5',
-    VERSION6: 'version6'
+    VERSION2_TO_6: 'version2_to_6',
+    VERSION7: 'version7'
 });
 
 
