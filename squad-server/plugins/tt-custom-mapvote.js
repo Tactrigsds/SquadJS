@@ -15,12 +15,6 @@ KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
  */
 
 
-const raasWeight = 70;
-const aasWeight = 30
-const skirmishWeight = 5
-const tcWeight = 5;
-
-
 export default class TTCustomMapVote extends DiscordBasePlugin {
     static get description() {
         return (
@@ -216,13 +210,13 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     tc: 5
                 }
             },
-            mapSizeWeightsForPool: {
+            defaultMapSizeWeights: {
                 required: false,
-                description: "",
+                description: "The weights of a given game map size to be picked in the pool assuming there are viable layers.",
                 default: {
                     large: 60,
                     medium: 20,
-                    small: 30
+                    small: 20
                 }
             },
             nightTimeLayerListFilters: {
@@ -305,6 +299,12 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
           { option: "TC", weight: this.options.defaultGameModeWeights.tc }
         ];
 
+        this.mapSizeWeights = [
+          { option: "Small", weight: this.options.defaultMapSizeWeights.small },
+          { option: "Medium", weight: this.options.defaultMapSizeWeights.medium },
+          { option: "Large", weight: this.options.defaultMapSizeWeights.large },
+        ]
+
         let rawLayerList;
         try {
             if (this.options.useWebEndpoint.enabled) {
@@ -329,21 +329,14 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
         // Remove globally banned layers and maps.
         this.verbose(1, `Removing globally banned layers and maps...`)
+        this.verbose(2, `Full layer list length before: ${rawLayerList.length}`)
         console.log(`Globally banned maps: ${this.options.globallyBannedMaps}`)
         console.log(`Globally banned layers: ${this.options.globallyBannedLayers}`)
-        this.verbose(2, `Full layer list length before: ${rawLayerList.length}`)
         rawLayerList = rawLayerList.filter(layer => !hasSpecificMap(layer, this.options.globallyBannedMaps))
         rawLayerList = rawLayerList.filter(layer => !hasSpecificLayer(layer, this.options.globallyBannedLayers))
         this.verbose(2, `Full layer list length after: ${rawLayerList.length}`)
 
-        // Apply balance filter.
-        // TODO check layerlist version here.
-        // this.verbose(1, `Applying balance differential filter of: ${this.options.balanceDifferential}.`)
-        // const lengthBefore = rawLayerList.length
-        // rawLayerList = rawLayerList.filter(layer => Math.abs(layer.balanceDifferential) < this.options.balanceDifferential)
-
-
-
+        // Initialize the regular layer list.
         this.curatedLayerList = filterLayerList(
             rawLayerList,
             Logger,
@@ -358,6 +351,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             false
         )
 
+        // Initialize night time layer list.
         this.nightTimeLayerList = filterLayerList(
             rawLayerList,
             Logger,
@@ -371,6 +365,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.options.nightTimeLayerListFilters.bannedGlobalSubfactions,
             this.options.nightTimeLayerListFilters.removeLargeLayersWithPoorTransportScore
         )
+
+        // Initialize safe layer list, used for autosets, or with the safe parameter active.
         this.safeLayerList = filterLayerList(
             rawLayerList,
             Logger,
@@ -694,7 +690,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     }
 
     /**
-     *
+     * Utility function that fetches a layer list from a web endpoint.
+     * Does not parse or format the actual data.
      * @returns {Promise<*[]>}
      */
     async loadLayerListFromWebEndpoint(endpoint) {
@@ -789,8 +786,9 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     }
 
     /**
-     * Handles the chat message event. Handles regular players votes, in addition to admin users pool generation, read pool and vote start commands.
-     * @param info
+     * Handles the chat message event. Handles regular players votes, in addition to admin users pool generation,
+     * read pool and vote start commands.
+     * @param info Info about the message event, including the message content, player name, steamid.
      * @returns {Promise<void>}
      */
     async onChatMessage(info) {
@@ -1058,20 +1056,29 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
     }
 
-    // Generates the pool of maps from the paramaters given to the command. For ex. !genpool Narva Mutaha Yehorivka will generate a pool of those maps
+
+    /**
+     * This is the main function responsible for parsing filters, filter down viable layers based on those filters,
+     * And then
+     * @param splitMessage
+     * @param playerInfo
+     * @param layerList
+     * @returns {Promise<*[]>}
+     */
     async generatePoolFromParameters(splitMessage = [], playerInfo = null, layerList) {
 
         const mapSizes = ['small', 'medium', 'large'];
-        const gameModes = ['aas', 'raas', 'invasion', 'tc', 'insurgency', 'demolition'];
+        const gameModes = ['aas', 'raas', 'invasion', 'tc', 'skirmish'];
         const symmetricalIdentifiers = this.options.symmetricalFlagIdentifiers;
         const assymmetricalIdentifiers = ['asymm', 'asym', 'assymetrical'];
         const anySubfactionIdentifiers = ['any', 'random'];
 
         // TODO improve the handling for the various flags and filters.
+        // Global filters represent filters that will be used for all picks for the pool, assuming there are enough valid layers to do so.
+        const globalFilters = { symmetrical: false, mapSize: '', gameMode: '', subfactionSymmetry: null, newUnits: false };
 
         this.verbose(1, 'Generating map pool...');
         const desiredMaps = [];
-        const globalFilters = { symmetrical: false, mapSize: '', gameMode: '', subfactionSymmetry: null, newUnits: false };
         const messages = splitMessage.map(message => message.toLowerCase().trim());
         const parameters = messages.slice(1);
         const globalFactions = [];
@@ -1080,7 +1087,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         const desiredMapSizes = [];
         const slotOptions = [];
         const currentMapPool = [];
-        let allLayers = layerList;
+        const allLayers = layerList;
 
         // eslint-disable-next-line no-unused-vars
         const recentMatchups = [];
@@ -1178,14 +1185,14 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.verbose(2, 'Running pool generation with default parameters..');
             const tempSizes = [];
             for (let i = 0; i < this.mapPoolSize; i++) {
-                tempSizes.push(getRandomMapSizeDefaults());
+                tempSizes.push(weightedRandomSelection(this.mapSizeWeights));
             }
             const randomInt = getRandomInt(0, this.mapPoolSize - 1);
             const randomSize = tempSizes[randomInt];
             tempSizes.splice(randomInt, 1);
-            slotOptions.push(createSlotOptionFilters(SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL, randomSize, weightedRandomPick(this.gameModeWeights)));
+            slotOptions.push(createSlotOptionFilters(SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL, randomSize, weightedRandomSelection(this.gameModeWeights)));
             for (const size of tempSizes) {
-                slotOptions.push(createSlotOptionFilters(SUBFACTION_SYMMETRY_ENUM.RANDOM, size, weightedRandomPick(this.gameModeWeights)));
+                slotOptions.push(createSlotOptionFilters(SUBFACTION_SYMMETRY_ENUM.RANDOM, size, weightedRandomSelection(this.gameModeWeights)));
             }
             this.verbose(3, `Default parameters filter options per map: ${slotOptions}`);
         }
@@ -1245,13 +1252,13 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             } else if (desiredMapSizes) {
                 mapSize = desiredMapSizes.shift()
             } else {
-                mapSize = getRandomMapSizeDefaults();
+                mapSize = weightedRandomSelection(this.options.defaultMapSizeWeights);
             }
 
             if (globalFilters.gameMode) {
                 gameMode = globalFilters.gameMode;
             } else {
-                gameMode = weightedRandomPick(this.gameModeWeights);
+                gameMode = weightedRandomSelection(this.gameModeWeights);
             }
 
             const option = createSlotOptionFilters(
@@ -1786,7 +1793,7 @@ function deleteOldFiles(directory) {
     }
 }
 
-function weightedRandomPick(options) {
+function weightedRandomSelection(options) {
     const totalWeight = options.reduce((sum, option) => sum + option.weight, 0);
     const randomNum = Math.random() * totalWeight;
     let cumulativeWeight = 0;
@@ -2124,5 +2131,5 @@ export {
     initializeLogFolder,
     layerToStringFull,
     layerToStringShort,
-    weightedRandomPick
+    weightedRandomSelection
 };
