@@ -3,13 +3,11 @@ import fs from 'fs';
 import {defaultMapList, factionMap, getSubfaction, subfactionAbbreviations} from '../utils/faction-constants.js'
 import axios from "axios";
 import path from "path";
-// import { Logger } from 'core/logger';
 import Logger from 'core/logger';
 import {
     getFormattedDateForLog,
     getLayerListLogPath
 } from "../utils/utils.js";
-import {all} from "eslint-plugin-promise/rules/lib/promise-statics.js";
 
 /*
 KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
@@ -80,7 +78,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 default: 4,
                 example: 0
             },
-            layerPoolSize: {
+            votingPoolSize: {
                 required: false,
                 description: "The amount of layers in the voting pool",
                 default: 3,
@@ -177,7 +175,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     autoSetSafeMapAfterSeeding: false
                 }
             },
-            useNightHours: {
+            useNightTimeLayerList: {
                 required: false,
                 description: "Whether to use night hours, needs a start and end time, defined in UTC",
                 default: {
@@ -227,18 +225,25 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     balanceDifferential: 1.5,
                     asymmetryDifferential: 2.0,
                     gameMode: "RAAS",
-                    bannedMaps: [
-                        // 'AlBasrah',
-                        // 'Anvil',
-                        // 'Tallil',
-                        // 'Skorpo',
-                        // 'Kamdesh',
-                        // 'Lashkar',
-                        // 'Kohat',
-                    ],
+                    bannedMaps: [],
                     bannedLayers: [],
                     bannedFactions: [],
-                    bannedGlobalSubfactions: []
+                    bannedGlobalSubfactions: [],
+                    removeLargeLayersWithPoorTransportScore: true
+                }
+            },
+            safeLayerListFilters: {
+                required: false,
+                description: "The various filters used for the safe layer list. This list is used if for map start AutoSets, or if the safe parameter to a genpool command.",
+                default: {
+                    balanceDifferential: 1.5,
+                    asymmetryDifferential: 2.0,
+                    gameMode: "RAAS",
+                    bannedMaps: [],
+                    bannedLayers: [],
+                    bannedFactions: [],
+                    bannedGlobalSubfactions: [],
+                    removeLargeLayersWithPoorTransportScore: true
                 }
             }
         };
@@ -264,7 +269,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.mapVoteWinner = null;
         this.mapVoteRunning = false;
         this.poolGenerationTime = Date.now()
-        this.mapPoolSize = 3
         this.voteOptions = [];
         this.recentPoolPicks = []
         this.previousParameters = []
@@ -281,6 +285,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.server.on(this.server.eventsEnum.chatMessage, this.onChatMessage);
         this.server.on(this.server.eventsEnum.newGame, this.onNewGame);
         this.server.on(this.server.eventsEnum.databaseUpdated, this.onDatabaseUpdated)
+        this.mapPoolSize = this.options.votingPoolSize
         this.curatedLayerList = []
         this.server.autoSetLayerOnRoundStart = this.options.autoSetLayerOnRoundStart.enabled
         let rawLayerList;
@@ -323,10 +328,10 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
 
 
-        filterLayerList(
+        this.curatedLayerList = filterLayerList(
             rawLayerList,
             Logger,
-            'Regular List',
+            'Regular LayerList',
             this.options.balanceDifferential,
             this.options.asymmetryDifferential.regular,
             null,
@@ -336,14 +341,39 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             null,
             false
         )
-        this.curatedLayerList = generateRegularLayerList(rawLayerList, Logger, this.options.balanceDifferential, this.options.asymmetryDifferential.regular)
-        this.safeLayerList = generateSafeLayerList(rawLayerList)
-        this.nightTimeLayerList = generateNightLayerList(rawLayerList)
+
+        this.nightTimeLayerList = filterLayerList(
+            rawLayerList,
+            Logger,
+            'Night Time LayerList',
+            this.options.nightTimeLayerListFilters.balanceDifferential,
+            this.options.nightTimeLayerListFilters.asymmetryDifferential,
+            this.options.nightTimeLayerListFilters.gameMode,
+            this.options.nightTimeLayerListFilters.bannedMaps,
+            this.options.nightTimeLayerListFilters.bannedLayers,
+            this.options.nightTimeLayerListFilters.bannedFactions,
+            this.options.nightTimeLayerListFilters.bannedGlobalSubfactions,
+            this.options.nightTimeLayerListFilters.removeLargeLayersWithPoorTransportScore
+        )
+        this.safeLayerList = filterLayerList(
+            rawLayerList,
+            Logger,
+            'Safe Layerlist',
+            this.options.safeLayerListFilters.balanceDifferential,
+            this.options.safeLayerListFilters.asymmetryDifferential,
+            this.options.safeLayerListFilters.gameMode,
+            this.options.safeLayerListFilters.bannedMaps,
+            this.options.safeLayerListFilters.bannedLayers,
+            this.options.safeLayerListFilters.bannedFactions,
+            this.options.safeLayerListFilters.bannedGlobalSubfactions,
+            this.options.safeLayerListFilters.removeLargeLayersWithPoorTransportScore
+        )
+
         this.verbose(1, `Regular layer list length: ${this.curatedLayerList.length}`)
         this.verbose(1, `Night time layer list length: ${this.nightTimeLayerList.length}`)
         this.verbose(1, `Safe/AutoSet layer list length: ${this.safeLayerList.length}`)
 
-        // Perform logging of layerlists.
+        // Initializing layer list logfile, remove old log files etc.
         try {
             this.layerListLogFile = getLayerListLogPath(this.options.layerListLogFolder)
             initializeLogFolder(this.options.layerListLogFolder)
@@ -356,8 +386,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
         // We have this here to ensure that the persistent history plugin has time to load first,
         // Before attempting to retrieve the recent match history.
-        this.mapPool = []
         await new Promise((resolve) => setTimeout(resolve, 200));
+        this.mapPool = []
         this.mapPool = await this.generatePoolByTimeRange([], null,)
     }
 
@@ -373,6 +403,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.server.nextLayerSet = false
         this.adminTriggeringPoolGen = { admin: null, steamID: null }
 
+        // Don't autoset if we're on jensens or a seeding map.
         if (this.server.autoSetLayerOnRoundStart) {
             if (this.server.currentMap.layer.includes('Jensen') || this.server.currentMap.layer.includes('Seed')) {
                 return
@@ -479,11 +510,11 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
      * @returns {Promise<*[]>}
      */
     async generatePoolByTimeRange(messages = [], playerInfo = null) {
-        const nightTimeStart = this.options.useNightHours.startTimeUTC
-        const nightTimeEnd = this.options.useNightHours.endTimeUTC
+        const nightTimeStart = this.options.useNightTimeLayerList.startTimeUTC
+        const nightTimeEnd = this.options.useNightTimeLayerList.endTimeUTC
         let pool;
         let usedList;
-        if (this.options.useNightHours.enabled && checkIfTimeInRange(nightTimeStart, nightTimeEnd, new Date())) {
+        if (this.options.useNightTimeLayerList.enabled && checkIfTimeInRange(nightTimeStart, nightTimeEnd, new Date())) {
             this.verbose(1, 'Generating pool using nighttime layerlist.')
             pool = await this.generatePoolFromParameters(messages, playerInfo, this.nightTimeLayerList)
             usedList = 'NightTimeList'
@@ -1014,9 +1045,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     // Generates the pool of maps from the paramaters given to the command. For ex. !genpool Narva Mutaha Yehorivka will generate a pool of those maps
     async generatePoolFromParameters(splitMessage = [], playerInfo = null, layerList) {
 
-        // This is a really stupid hack to ensure that the "persistent history" plugin can load the matches from the database before the pool is generated.
-
-
         const mapSizes = ['small', 'medium', 'large'];
         const gameModes = ['aas', 'raas', 'invasion', 'tc', 'insurgency', 'demolition'];
         const symmetricalIdentifiers = this.options.symmetricalFlagIdentifiers;
@@ -1040,8 +1068,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
         // eslint-disable-next-line no-unused-vars
         const recentMatchups = [];
-        let recentMatches = this.server.getMatchHistoryFromDB();
-
+        let recentMatches = this.server.getMatchHistoryFromDB(true);
         recentMatches = recentMatches.map(match => {
             return {
                 level: match.map,
@@ -1750,14 +1777,6 @@ function deleteOldFiles(directory) {
 }
 
 
-
-function checkIfLayerIsRecentlyPlayed(layer, recentMatches) {
-    recentMatches = recentMatches.map((layer) =>
-        layer.layerClassname.toLowerCase().trim().replace(' ', '')
-    );
-    return recentMatches.includes(layer.layer.toLowerCase().trim());
-}
-
 function checkIfTimeInRange(start, end, currentTime = new Date()) {
     const splitStartTime = start.split(":")
     const splitEndTime =   end.split(":")
@@ -1783,21 +1802,6 @@ function checkIfTimeInRange(start, end, currentTime = new Date()) {
 }
 
 
-
-function generateRegularLayerList(allLayers, logger = null, balanceDifferential, assymmetryDifferential) {
-    if (logger) {
-        logger.verbose("TTCustomMapVote", 1, `Regular list: Applying balance differential filter of: ${balanceDifferential}.`)
-        logger.verbose("TTCustomMapVote", 1, `Regular list: Applying asymmetry score of ${assymmetryDifferential}`)
-    }
-    allLayers = allLayers.filter(layer => Math.abs(layer.balanceDifferential) < balanceDifferential)
-    if (allLayers[0]?.asymmetryScore) {
-        allLayers = allLayers.filter(layer => Math.abs(layer.asymmetryScore) < assymmetryDifferential)
-    }
-
-    return allLayers
-}
-
-
 function filterLayerList(allLayers,
                          logger = null,
                          listName,
@@ -1809,40 +1813,70 @@ function filterLayerList(allLayers,
                          bannedFactions,
                          bannedSubfactionsFromAllFactions,
                          removeLargeLayersWithLowerTransport) {
-    if (logger) {
-        logger.verbose("TTCustomMapVote", 1, 'Test')
-    }
 
-    console.log('Initial Length:')
-    console.log(allLayers.length)
+    const loggerLevel = 2
 
     if (balanceDifferential) {
         allLayers = allLayers.filter(layer => Math.abs(layer.balanceDifferential) < balanceDifferential)
+        if (logger) {
+            logger.verbose("TTCustomMapVote", loggerLevel, `${listName}: Applying balance differential filter of: ${balanceDifferential}.`)
+        }
     }
     if (asymmetryDifferential) {
         if (allLayers[0]?.asymmetryScore) {
             allLayers = allLayers.filter(layer => Math.abs(layer.asymmetryScore) < asymmetryDifferential)
         }
+        if (logger) {
+            logger.verbose("TTCustomMapVote", loggerLevel, `${listName}: Applying asymmetry score filter of: ${asymmetryDifferential}.`)
+        }
     }
     if (bannedMaps) {
         allLayers = allLayers.filter(layer => !hasSpecificMap(layer, bannedMaps))
+        if (logger) {
+            logger.verbose("TTCustomMapVote", loggerLevel, `${listName}: Removing maps: `)
+            console.log(bannedMaps)
+        }
     }
     if (bannedLayers) {
         allLayers = allLayers.filter(layer => !hasSpecificLayer(layer, bannedLayers))
+        if (logger) {
+            logger.verbose("TTCustomMapVote", loggerLevel, `${listName}: Removing layers: `)
+            console.log(bannedLayers)
+        }
     }
     if (bannedFactions) {
         allLayers = allLayers.filter(layer => !hasSpecificFaction(layer, bannedFactions))
+        if (logger) {
+            logger.verbose("TTCustomMapVote", loggerLevel, `${listName}: Removing factions: `)
+            console.log(bannedFactions)
+        }
     }
     if (bannedSubfactionsFromAllFactions) {
         allLayers = allLayers.filter(layer => !hasSpecificSubFactions(layer, bannedSubfactionsFromAllFactions))
+        if (logger) {
+            logger.verbose("TTCustomMapVote", loggerLevel, `${listName}: Removing subfactions: `)
+            console.log(bannedSubfactionsFromAllFactions)
+        }
+    }
+
+    if (gameMode) {
+        allLayers = allLayers.filter(layer => getGameMode(layer) === gameMode)
+        if (logger) {
+            logger.verbose("TTCustomMapVote", loggerLevel, `${listName}: Only getting layers from the following game mode: ${gameMode} `)
+        }
     }
 
     if (removeLargeLayersWithLowerTransport) {
+        const minimumTransportScore = 80
+
+        if (logger) {
+            logger.verbose("TTCustomMapVote", loggerLevel, `${listName}: Removing large layers with poor transport scores... Score of minimum: ${minimumTransportScore}`)
+        }
+
         const smallerLargeMaps = [
             'Narva',
             'Fallujah'
         ]
-        const minimumTransportScore = 80
         allLayers = allLayers.filter(layer => {
             if (layer.size === 'Large' && !smallerLargeMaps.includes(layer.level)) {
                 return (layer.transportationScore1 > minimumTransportScore && layer.transportationScore2 > minimumTransportScore);
@@ -1850,130 +1884,10 @@ function filterLayerList(allLayers,
             return true
         })
     }
-    console.log('Final Length: ')
-    console.log(allLayers.length)
-    return allLayers
-}
-
-
-
-
-function generateSafeLayerList(allLayers) {
-    const safeListBannedMaps = [
-        'AlBasrah',
-        'Anvil',
-        'Tallil',
-        'Skorpo',
-        'Kamdesh',
-        'Lashkar',
-        'Kohat',
-        'Harju',
-        'Manic',
-        'Mestia'
-    ]
-
-    const bannedLayers = [
-        'Harju_RAAS_v2',
-        'Sanxian_AAS_v1',
-        'Sanxian_RAAS_v1',
-        'Sanxian_RAAS_v2',
-        'Mutaha_AAS_v2'
-    ]
-
-    const bannedFactions = [
-        'INS',
-        'IMF',
-        'TLF',
-    ]
-
-    const bannedGlobalSubfactions = [
-        'AirAssault',
-        'Armored'
-    ]
-
-    const minimumTransportScore = 80
-
-    const smallerLargeMaps = [
-        'Narva',
-        'Fallujah'
-    ]
-
-    allLayers = allLayers.filter(layer => !hasSpecificFactionAndSubfactions(layer, bannedSpecificSubfactions))
-    allLayers = allLayers.filter(layer => getGameMode(layer) === "RAAS")
-    allLayers = allLayers.filter(layer => !hasSpecificMap(layer, safeListBannedMaps))
-    allLayers = allLayers.filter(layer => !hasSpecificSubFactions(layer, bannedGlobalSubfactions))
-    allLayers = allLayers.filter(layer => !hasSpecificFaction(layer, bannedFactions))
-    allLayers = allLayers.filter(layer => !hasSpecificLayer(layer, bannedLayers))
-    allLayers = allLayers.filter(layer => Math.abs(layer.balanceDifferential) < 1.5)
-    allLayers = allLayers.filter(layer => {
-        if (layer.size === 'Large' && !smallerLargeMaps.includes(layer.level)) {
-            return (layer.transportationScore1 > minimumTransportScore && layer.transportationScore2 > minimumTransportScore);
-        }
-        return true
-    })
 
     return allLayers
 }
 
-function generateNightLayerList(allLayers) {
-    const bannedMaps = [
-        'AlBasrah',
-        'Anvil',
-        'Tallil',
-        'Skorpo',
-        'Kamdesh',
-        'Lashkar',
-        'Kohat',
-    ]
-
-    const bannedLayers = [
-        'Manicouagan_RAAS_v2',
-        "Manicouagan_AAS_v3",
-        'Harju_RAAS_v2',
-        'Sanxian_AAS_v1',
-        'Sanxian_RAAS_v1',
-        'Sanxian_RAAS_v2',
-        'Mutaha_AAS_v2'
-    ]
-
-    const bannedFactions = [
-        'INS',
-        'IMF',
-        'TLF',
-    ]
-
-    const bannedGlobalSubfactions = [
-        'AirAssault',
-        'Armored'
-    ]
-
-    // Maps that are considered in the "Large" category by OWI, but physically aren't that large.
-    const smallerLargeMaps = [
-        'Narva',
-        'Fallujah'
-    ]
-
-    const bannedSpecificSubfactions = [
-        { faction: 'USA', subfaction: 'Support'},
-        { faction: 'TLF', subfaction: 'Support'},
-    ]
-
-    allLayers = allLayers.filter(layer => !hasSpecificFactionAndSubfactions(layer, bannedSpecificSubfactions))
-    allLayers = allLayers.filter(layer => !hasSpecificMap(layer, bannedMaps))
-    allLayers = allLayers.filter(layer => !hasSpecificSubFactions(layer, bannedGlobalSubfactions))
-    allLayers = allLayers.filter(layer => !hasSpecificFaction(layer, bannedFactions))
-    allLayers = allLayers.filter(layer => !hasSpecificLayer(layer, bannedLayers))
-    allLayers = allLayers.filter(layer => Math.abs(layer.balanceDifferential) < 1.0)
-    allLayers = allLayers.filter(layer => {
-        if (layer.size === 'Large' && !smallerLargeMaps.includes(layer.level)) {
-            return (layer.transportationScore1 > 80 && layer.transportationScore2 > 80);
-        }
-        return true
-    })
-
-    return allLayers
-
-}
 
 /**
  *
@@ -2063,12 +1977,8 @@ function filterRecentFactions(layerList, matchHistory, currentFaction1, currentF
 
 function hasNewSubfactions(layer) {
     const newUnits = [
-        {faction: 'USA', subfaction: 'Armored'},
-        {faction: 'USA', subfaction: 'Mechanized'},
-        {faction: 'USA', subfaction: 'Support'},
-        {faction: 'TLF', subfaction: 'Support'},
-        {faction: 'RGF', subfaction: 'Mechanized'},
-        {faction: 'RGF', subfaction: 'Armored'},
+        { faction: 'WPMC', subfaction: 'CombinedArms' },
+        { faction: 'WPMC', subfaction: 'LightInfantry' },
     ]
 
     for (const unit of newUnits) {
@@ -2182,8 +2092,6 @@ const LAYER_LIST_VERSION_ENUM = Object.freeze({
 
 
 export {
-    generateSafeLayerList,
-    generateNightLayerList,
     checkIfTimeInRange,
     hasSpecificLayer,
     hasSpecificFactionAndSubfactions,
