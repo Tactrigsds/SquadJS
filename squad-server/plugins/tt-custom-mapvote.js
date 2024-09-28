@@ -17,6 +17,12 @@ KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
  */
 
 
+const raasWeigh = 70;
+const aasWeigh = 30
+const skirmishWeigh = 5
+const tcWeighting = 5;
+
+
 export default class TTCustomMapVote extends DiscordBasePlugin {
     static get description() {
         return (
@@ -203,6 +209,37 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 required: false,
                 description: 'Maps that are filtered out from all types of layerlists.',
                 default: []
+            },
+            defaultGameModeWeights: {
+                required: false,
+                description: "The weights/'chance' of a given gamemode appearing in the pool, presupposing that there are valid picks after all filters have been applied.",
+                default: {
+                    raas: 65,
+                    aas: 25,
+                    skirmish: 5,
+                    tc: 5
+                }
+            },
+            nightTimeLayerListFilters: {
+                required: false,
+                description: "The various filters used for the night time layer list",
+                default: {
+                    balanceDifferential: 1.5,
+                    asymmetryDifferential: 2.0,
+                    gameMode: "RAAS",
+                    bannedMaps: [
+                        // 'AlBasrah',
+                        // 'Anvil',
+                        // 'Tallil',
+                        // 'Skorpo',
+                        // 'Kamdesh',
+                        // 'Lashkar',
+                        // 'Kohat',
+                    ],
+                    bannedLayers: [],
+                    bannedFactions: [],
+                    bannedGlobalSubfactions: []
+                }
             }
         };
     }
@@ -284,7 +321,21 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         // const lengthBefore = rawLayerList.length
         // rawLayerList = rawLayerList.filter(layer => Math.abs(layer.balanceDifferential) < this.options.balanceDifferential)
 
-        // this.rawLayerList = rawLayerList
+
+
+        filterLayerList(
+            rawLayerList,
+            Logger,
+            'Regular List',
+            this.options.balanceDifferential,
+            this.options.asymmetryDifferential.regular,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false
+        )
         this.curatedLayerList = generateRegularLayerList(rawLayerList, Logger, this.options.balanceDifferential, this.options.asymmetryDifferential.regular)
         this.safeLayerList = generateSafeLayerList(rawLayerList)
         this.nightTimeLayerList = generateNightLayerList(rawLayerList)
@@ -1745,6 +1796,66 @@ function generateRegularLayerList(allLayers, logger = null, balanceDifferential,
 
     return allLayers
 }
+
+
+function filterLayerList(allLayers,
+                         logger = null,
+                         listName,
+                         balanceDifferential,
+                         asymmetryDifferential,
+                         gameMode,
+                         bannedMaps,
+                         bannedLayers,
+                         bannedFactions,
+                         bannedSubfactionsFromAllFactions,
+                         removeLargeLayersWithLowerTransport) {
+    if (logger) {
+        logger.verbose("TTCustomMapVote", 1, 'Test')
+    }
+
+    console.log('Initial Length:')
+    console.log(allLayers.length)
+
+    if (balanceDifferential) {
+        allLayers = allLayers.filter(layer => Math.abs(layer.balanceDifferential) < balanceDifferential)
+    }
+    if (asymmetryDifferential) {
+        if (allLayers[0]?.asymmetryScore) {
+            allLayers = allLayers.filter(layer => Math.abs(layer.asymmetryScore) < asymmetryDifferential)
+        }
+    }
+    if (bannedMaps) {
+        allLayers = allLayers.filter(layer => !hasSpecificMap(layer, bannedMaps))
+    }
+    if (bannedLayers) {
+        allLayers = allLayers.filter(layer => !hasSpecificLayer(layer, bannedLayers))
+    }
+    if (bannedFactions) {
+        allLayers = allLayers.filter(layer => !hasSpecificFaction(layer, bannedFactions))
+    }
+    if (bannedSubfactionsFromAllFactions) {
+        allLayers = allLayers.filter(layer => !hasSpecificSubFactions(layer, bannedSubfactionsFromAllFactions))
+    }
+
+    if (removeLargeLayersWithLowerTransport) {
+        const smallerLargeMaps = [
+            'Narva',
+            'Fallujah'
+        ]
+        const minimumTransportScore = 80
+        allLayers = allLayers.filter(layer => {
+            if (layer.size === 'Large' && !smallerLargeMaps.includes(layer.level)) {
+                return (layer.transportationScore1 > minimumTransportScore && layer.transportationScore2 > minimumTransportScore);
+            }
+            return true
+        })
+    }
+    console.log('Final Length: ')
+    console.log(allLayers.length)
+    return allLayers
+}
+
+
 
 
 function generateSafeLayerList(allLayers) {
