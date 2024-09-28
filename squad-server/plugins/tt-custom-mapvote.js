@@ -15,10 +15,10 @@ KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
  */
 
 
-const raasWeigh = 70;
-const aasWeigh = 30
-const skirmishWeigh = 5
-const tcWeighting = 5;
+const raasWeight = 70;
+const aasWeight = 30
+const skirmishWeight = 5
+const tcWeight = 5;
 
 
 export default class TTCustomMapVote extends DiscordBasePlugin {
@@ -194,8 +194,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 description: '',
                 default: {
                     regular: 3.0,
-                    nightTime: 2.0,
-                    safe: 2.0
                 }
             },
             globallyBannedLayers: {
@@ -216,6 +214,15 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     aas: 25,
                     skirmish: 5,
                     tc: 5
+                }
+            },
+            mapSizeWeightsForPool: {
+                required: false,
+                description: "",
+                default: {
+                    large: 60,
+                    medium: 20,
+                    small: 30
                 }
             },
             nightTimeLayerListFilters: {
@@ -288,8 +295,17 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.mapPoolSize = this.options.votingPoolSize
         this.curatedLayerList = []
         this.server.autoSetLayerOnRoundStart = this.options.autoSetLayerOnRoundStart.enabled
-        let rawLayerList;
 
+        // Load the weights(chance of a gamemode being picked) from the config file.
+
+        this.gameModeWeights = [
+          { option: "RAAS", weight: this.options.defaultGameModeWeights.raas },
+          { option: "AAS", weight: this.options.defaultGameModeWeights.aas },
+          { option: "Skirmish", weight: this.options.defaultGameModeWeights.skirmish },
+          { option: "TC", weight: this.options.defaultGameModeWeights.tc }
+        ];
+
+        let rawLayerList;
         try {
             if (this.options.useWebEndpoint.enabled) {
                 rawLayerList = await this.loadLayerListFromWebEndpoint(this.options.useWebEndpoint.endpoint)
@@ -1149,17 +1165,11 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             globalFilters.subfactionSymmetry = SUBFACTION_SYMMETRY_ENUM.RANDOM
         }
 
+        // If only one map size were given as parameter, we want all the potential picks to be of that size.
         if (desiredMapSizes.length === 1) {
             globalFilters.mapSize = desiredMapSizes[0];
         }
 
-
-        if (!(globalFilters.gameMode === 'TC')) {
-            allLayers = allLayers.filter(layer => !(getGameMode(layer) === 'TC'))
-        }
-        if (!(globalFilters.gameMode === 'Skirmish')) {
-            allLayers = allLayers.filter(layer => !(getGameMode(layer) === 'Skirmish'))
-        }
 
         /*
           This here defines the default options if there are no valid parameters given.
@@ -1173,16 +1183,15 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             const randomInt = getRandomInt(0, this.mapPoolSize - 1);
             const randomSize = tempSizes[randomInt];
             tempSizes.splice(randomInt, 1);
-            slotOptions.push(createSlotOptionFilters(SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL, randomSize, getRandomGameModeDefaults()));
+            slotOptions.push(createSlotOptionFilters(SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL, randomSize, weightedRandomPick(this.gameModeWeights)));
             for (const size of tempSizes) {
-                slotOptions.push(createSlotOptionFilters(SUBFACTION_SYMMETRY_ENUM.RANDOM, size, getRandomGameModeDefaults()));
+                slotOptions.push(createSlotOptionFilters(SUBFACTION_SYMMETRY_ENUM.RANDOM, size, weightedRandomPick(this.gameModeWeights)));
             }
             this.verbose(3, `Default parameters filter options per map: ${slotOptions}`);
         }
 
         // Create get the filters and maps and combine them.
         // Process a pick option if maps have been given as input.
-
         // TODO adjust to use global or local/parameter specific filters when those are implemented.
         const desiredMapFilters = desiredMaps.map((layer) =>
             createMapSlotOption(
@@ -1242,7 +1251,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             if (globalFilters.gameMode) {
                 gameMode = globalFilters.gameMode;
             } else {
-                gameMode = getRandomGameModeDefaults();
+                gameMode = weightedRandomPick(this.gameModeWeights);
             }
 
             const option = createSlotOptionFilters(
@@ -1415,6 +1424,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             .map((value, index) => `${this.voteOptions[index]}: ${value} votes,`)
             .join(' ')
             .slice(0, -1);
+        console.log(totalsStr)
         if (tie) {
             await this.server.rcon.broadcast(
                 `Server: There has been a tie! Total votes: ${this.ballotBox.size}.\n${totalsStr}`
@@ -1776,6 +1786,18 @@ function deleteOldFiles(directory) {
     }
 }
 
+function weightedRandomPick(options) {
+    const totalWeight = options.reduce((sum, option) => sum + option.weight, 0);
+    const randomNum = Math.random() * totalWeight;
+    let cumulativeWeight = 0;
+    for (const option of options) {
+        cumulativeWeight += option.weight;
+        if (randomNum < cumulativeWeight) {
+            return option.option;
+        }
+    }
+}
+
 
 function checkIfTimeInRange(start, end, currentTime = new Date()) {
     const splitStartTime = start.split(":")
@@ -2102,4 +2124,5 @@ export {
     initializeLogFolder,
     layerToStringFull,
     layerToStringShort,
+    weightedRandomPick
 };
