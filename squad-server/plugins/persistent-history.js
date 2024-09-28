@@ -35,12 +35,18 @@ export default class PersistentHistory extends BasePlugin {
 
 
   async updateLayerHistory() {
-    const matches = await this.DBLogPlugin.models.Match.findAll({})
-    const matchesIncludingCurrent = matches.map(match => match.dataValues)
-    const layerHistoryClamp = Math.max(0, matches.length - this.server.layerHistoryMaxLength)
-    // We reverse the matches, so we get the most recent matches first.
-    this.server.matchHistoryNew = matchesIncludingCurrent.slice(layerHistoryClamp).reverse()
-    this.verbose(3, this.server.matchHistoryNew)
+    try {
+      const matches = await this.DBLogPlugin.models.Match.findAll({})
+      const matchesIncludingCurrent = matches.map(match => match.dataValues)
+      const layerHistoryClamp = Math.max(0, matches.length - this.server.layerHistoryMaxLength)
+      // We reverse the matches, so we get the most recent matches first.
+      this.server.matchHistoryNew = matchesIncludingCurrent.slice(layerHistoryClamp).reverse()
+      this.verbose(3, this.server.matchHistoryNew)
+    }
+    catch (e) {
+      console.log(e)
+    }
+
   }
 
 
@@ -51,6 +57,11 @@ export default class PersistentHistory extends BasePlugin {
     this.verbose(1, 'Loaded layer history from database...')
     this.server.on('DATABASE_UPDATED', this.onDatabaseUpdated)
   }
+
+  async unmount() {
+      this.server.removeEventListener(this.onDatabaseUpdated)
+    }
+
 
   async onDatabaseUpdated() {
     try {
@@ -67,12 +78,7 @@ export default class PersistentHistory extends BasePlugin {
       this.verbose(2, e)
     }
   }
-
-  async unmount() {
-    this.server.removeEventListener(this.onDatabaseUpdated)
-  }
 }
-
 
 async function filterAndSortMatches(matches) {
   matches = matches.map(match => match.dataValues)
