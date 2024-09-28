@@ -730,10 +730,10 @@ export default class DBLog extends BasePlugin {
 
   async roundEnded(info) {
     const isDraw = (!info.winner || !info.loser)
-
-    const [team1, team2] = this.server.currentMap.factions.split(" ");
-    const subfaction1 = team1.split("+")[1]
-    const subfaction2 = team2.split("+")[1]
+      
+    const [t1, t2] = this.server.currentMap.factions.split(" ");
+    const [team1, subfaction1] = t1.split('+')
+    const [team2, subfaction2] = t2.split('+')
 
     await this.models.Match.update(
       {
