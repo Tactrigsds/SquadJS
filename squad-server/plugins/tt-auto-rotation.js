@@ -77,7 +77,7 @@ export default class TTAutoRotation extends BasePlugin {
 
     async setNextLayerInRotation() {
         this.server.autoSetLayerOnRoundStart = false
-        const matchHistory = this.server.getMatchHistorySinceSessionStart()
+        const matchHistory = this.server.getMatchHistoryFromDB()
         let nextRotationPick;
         for (const layer of this.rotation) {
             let layerPlayed = false

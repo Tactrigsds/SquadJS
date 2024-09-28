@@ -477,7 +477,7 @@ export default class AdminCommands extends DiscordBasePlugin {
 
   async listRecentMatchDataLong(playerInfo) {
     const mapsToSendCount = 6
-    let matchHistory = this.server.getMatchHistorySinceSessionStart()
+    let matchHistory = this.server.getMatchHistoryFromDB()
     if (!matchHistory || !matchHistory.length) {
       await this.server.rcon.warn(playerInfo.steamID, 'Match history is empty. SquadJS was most likely unable to contact the database.')
       return;
@@ -547,7 +547,7 @@ export default class AdminCommands extends DiscordBasePlugin {
   }
 
   async listRecentMatchDataShort(playerInfo) {
-    let matchHistory = this.server.getMatchHistorySinceSessionStart()
+    let matchHistory = this.server.getMatchHistoryFromDB()
     const mapsToSendCount = 6
     const warns = []
     if (!matchHistory || !matchHistory.length) {

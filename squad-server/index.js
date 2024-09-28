@@ -781,23 +781,25 @@ export default class SquadServer extends EventEmitter {
   We will consider Jensen's test range the start of a session. Designed in conjunction with the "persistent history plugin".
   Will NOT function properly without the match history being grabbed from that plugin.
    */
-  getMatchHistorySinceSessionStart() {
+  getMatchHistoryFromDB(cutOffSeedingLayers=true) {
     const jensens = 'jensen'
     const seedMode = 'Seed'
-
     const matchHistory = this.matchHistoryNew
 
-    let sessionStartIndex = 0
-    for (let i = 0; i < matchHistory.length; i++) {
-      const map = matchHistory[i].layerClassname.toLowerCase().trim().replace(" ", "");
-      const mode = matchHistory[i].layerClassname.split("_")[1]
-      if (map.includes(jensens) || mode.includes(seedMode)) {
-        sessionStartIndex = i
+    if (!cutOffSeedingLayers) {
+      return matchHistory
+    } else {
+      let sessionStartIndex = 0
+      for (let i = 0; i < matchHistory.length; i++) {
+        const map = matchHistory[i].layerClassname.toLowerCase().trim().replace(" ", "");
+        const mode = matchHistory[i].layerClassname.split("_")[1]
+        if (map.includes(jensens) || mode.includes(seedMode)) {
+          sessionStartIndex = i
+        }
       }
-    }
     return sessionStartIndex === 0 ? matchHistory : matchHistory.slice(0, sessionStartIndex)
+    }
   }
-
 
   getMatchStartTimeByPlaytime(playtime) {
     return new Date(Date.now() - +playtime * 1000);
@@ -823,11 +825,4 @@ export default class SquadServer extends EventEmitter {
     const onlineAdminListWithPerms = this.getAdminsWithPermission('canseeadminchat');
     return onlineAdminListWithPerms.includes(steamID);
   }
-
-
-  /**
-   * Stupid hack to hopefully make the server store the correct layer information.
-   * @returns {Promise<void>}
-   */
-
 }

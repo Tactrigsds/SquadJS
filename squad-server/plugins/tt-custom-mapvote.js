@@ -928,7 +928,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
         // eslint-disable-next-line no-unused-vars
         const recentMatchups = [];
-        let recentMatches = this.server.getMatchHistorySinceSessionStart();
+        let recentMatches = this.server.getMatchHistoryFromDB();
 
         recentMatches = recentMatches.map(match => {
             return {
