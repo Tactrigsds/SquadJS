@@ -3,6 +3,7 @@ import {
     hasSpecificFactionAndSubfactions,
     hasSpecificLayer,
     filterRecentFactions,
+    weightedRandomPick
     // getLayerListLogPath,
 } from '../squad-server/plugins/tt-custom-mapvote.js'
 import * as assert from "assert";
@@ -11,7 +12,8 @@ import { layerList } from "./layerListLoaded.js";
 // import {recentMatchHistoryTest1} from "./recentMatchesUtils.js";
 import { recentMatchHistoryTest1, recentMatchHistoryTest2} from "./recent-matches-utils.js";
 import { getFormattedDateForLog, getLayerListLogPath} from "../squad-server/utils/utils.js";
-
+import sinon from 'sinon';
+import { expect } from 'chai';
 // console.log(getLayerListLogPath('./'));
 
 
@@ -265,3 +267,50 @@ describe('Test layerlist logging functionality.', function () {
     //     initializeLogFolder(logFolder)
     // });
 });
+
+describe('Test weighted random pick function', () => {
+    let options;
+
+    beforeEach(() => {
+        options = [
+            { option: "RAAS", weight: 70 },
+            { option: "AAS", weight: 30 },
+            { option: "Skirmish", weight: 5 },
+            { option: "TC", weight: 5 }
+        ];
+    });
+
+    it('should return one of the valid options', () => {
+        const result = weightedRandomPick(options);
+        const validOptions = options.map(opt => opt.option);
+        expect(validOptions).to.include(result);
+    });
+      it('should favor options with higher weights', () => {
+    const stub = sinon.stub(Math, 'random').returns(0.9); // Force a high random number
+    const result = weightedRandomPick(options);
+    expect(result).to.equal('RAAS'); // Because RAAS has the highest weight
+    stub.restore();
+  });
+
+  it('should pick "AAS" when random value is in a specific range', () => {
+    const stub = sinon.stub(Math, 'random').returns(0.75); // Between RAAS and AAS
+    const result = weightedRandomPick(options);
+    expect(result).to.equal('AAS');
+    stub.restore();
+  });
+
+  it('should pick "Skirmish" when random value is low enough', () => {
+    const stub = sinon.stub(Math, 'random').returns(0.98); // Toward the end of the weight spectrum
+    const result = weightedRandomPick(options);
+    expect(result).to.equal('Skirmish');
+    stub.restore();
+  });
+
+  it('should pick "TC" when random value is at the very end', () => {
+    const stub = sinon.stub(Math, 'random').returns(0.995); // Near the edge for TC
+    const result = weightedRandomPick(options);
+    expect(result).to.equal('TC');
+    stub.restore();
+  });
+
+})
