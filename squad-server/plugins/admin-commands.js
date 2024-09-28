@@ -555,6 +555,13 @@ export default class AdminCommands extends DiscordBasePlugin {
       return;
     }
 
+    let useRandyTime = false
+    const randyName = 'newman'
+    // const randyName = 'flax'
+    if (playerInfo.name.toLowerCase().includes(randyName)) {
+      useRandyTime = true
+    }
+
     matchHistory = matchHistory.slice(1)
     if (!matchHistory.length) {
       await this.server.rcon.warn(playerInfo.steamID, `No games stored in the current session, last map was most likely Jensens Range`)
@@ -562,22 +569,44 @@ export default class AdminCommands extends DiscordBasePlugin {
     }
 
     let message = `Match data from the last ${mapsToSendCount} rounds: \n\n`
+    if (useRandyTime) {
+      message += `This is special for you Randy Newman ;) <3\n\n`
+    }
 
     for (let i = 0; i < matchHistory.length && i < mapsToSendCount; ++i) {
       const data = matchHistory[i]
       let endTime;
-      let estHours
-      let estMinutes
+      let endHours
+      let endMinutes
+      let postFix;
       if (data.endTime) {
-        endTime = new Date(+data.endTime - (60 * 60 * 4 * 1000))
-        estHours = endTime?.getUTCHours()?.toString().padStart(2, '0')
-        estMinutes = endTime?.getUTCMinutes()?.toString().padStart(2, '0')
+        if (useRandyTime) {
+          endTime = new Date(+data.endTime + (60 * 60 * 8 * 1000))
+          if (endTime.getUTCHours() < 12) {
+            postFix = 'AM'
+            endHours = endTime.getUTCHours()
+          } else if (endTime.getUTCHours() < 24) {
+            postFix = 'PM'
+            endHours = endTime.getUTCHours() - 12
+          }
+          endHours = endHours.toString()
+          endMinutes = endTime.getUTCMinutes().toString().padStart(2, '0')
+
+        } else {
+          endTime = new Date(+data.endTime - (60 * 60 * 4 * 1000))
+          endHours = endTime?.getUTCHours()?.toString().padStart(2, '0')
+          endMinutes = endTime?.getUTCMinutes()?.toString().padStart(2, '0')
+        }
       }
 
       message += `${i+1}.  `
       message += `${data.layerClassname}\n`
       if (endTime) {
-        message += `Match End time: ${estHours}:${estMinutes} - EST`
+        if (useRandyTime) {
+          message += `Match End Time: ${endHours}:${endMinutes} ${postFix} HKT`
+        } else {
+          message += `Match End time: ${endHours}:${endMinutes} - EST`
+        }
       }
       message += `\n\n`
 
