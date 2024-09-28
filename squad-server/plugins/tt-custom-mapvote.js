@@ -3,10 +3,13 @@ import fs from 'fs';
 import {defaultMapList, factionMap, getSubfaction, subfactionAbbreviations} from '../utils/faction-constants.js'
 import axios from "axios";
 import path from "path";
+// import { Logger } from 'core/logger';
+import Logger from 'core/logger';
 import {
     getFormattedDateForLog,
     getLayerListLogPath
 } from "../utils/utils.js";
+import {all} from "eslint-plugin-promise/rules/lib/promise-statics.js";
 
 /*
 KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
@@ -182,7 +185,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 description: "The folder that the layerlist logs will be stored in.",
                 default: './logfolder'
             },
-            assymetryDifferential: {
+            asymmetryDifferential: {
                 required: false,
                 description: '',
                 default: {
@@ -268,29 +271,21 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
         // Remove globally banned layers and maps.
         this.verbose(1, `Removing globally banned layers and maps...`)
+        console.log(`Globally banned maps: ${this.options.globallyBannedMaps}`)
+        console.log(`Globally banned layers: ${this.options.globallyBannedLayers}`)
         this.verbose(2, `Full layer list length before: ${rawLayerList.length}`)
         rawLayerList = rawLayerList.filter(layer => !hasSpecificMap(layer, this.options.globallyBannedMaps))
         rawLayerList = rawLayerList.filter(layer => !hasSpecificLayer(layer, this.options.globallyBannedLayers))
         this.verbose(2, `Full layer list length after: ${rawLayerList.length}`)
-        // generateRegularLayerList(rawLayerList, this.verbose)
 
         // Apply balance filter.
         // TODO check layerlist version here.
         // this.verbose(1, `Applying balance differential filter of: ${this.options.balanceDifferential}.`)
         // const lengthBefore = rawLayerList.length
         // rawLayerList = rawLayerList.filter(layer => Math.abs(layer.balanceDifferential) < this.options.balanceDifferential)
-        // const layersRemoved = lengthBefore - rawLayerList.length
-        // this.verbose(2, `Layers removed: ${layersRemoved}`)
-        // this.verbose(1, `Layer count after applying balance filter: ${rawLayerList.length}`)
-
-
-        // Apply assymmetry filter.
-        this.verbose(1, `Applying assymetry filter of: `)
-        // TODO make a new function for generating the regular list.
-
 
         // this.rawLayerList = rawLayerList
-        this.curatedLayerList = generateRegularLayerList(rawLayerList, this.options.balanceDifferential, this.options.assymetryDifferential.regular)
+        this.curatedLayerList = generateRegularLayerList(rawLayerList, Logger, this.options.balanceDifferential, this.options.asymmetryDifferential.regular)
         this.safeLayerList = generateSafeLayerList(rawLayerList)
         this.nightTimeLayerList = generateNightLayerList(rawLayerList)
         this.verbose(1, `Regular layer list length: ${this.curatedLayerList.length}`)
@@ -308,8 +303,11 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             console.log(err)
         }
 
+        // We have this here to ensure that the persistent history plugin has time to load first,
+        // Before attempting to retrieve the recent match history.
         this.mapPool = []
-        this.mapPool = await this.generatePoolByTimeRange([], null, true)
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        this.mapPool = await this.generatePoolByTimeRange([], null,)
     }
 
     async unmount() {
@@ -339,7 +337,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 }
             }
 
-            const tempPool = await this.generatePoolFromParameters([], null, false, this.safeLayerList);
+            const tempPool = await this.generatePoolFromParameters([], null, this.safeLayerList);
             this.server.warnAllAdmins('SquadJS: Setting random pick from map pool as a fallback.')
             await this.setPoolPickOnRoundStart(tempPool)
             setTimeout(() => {
@@ -427,21 +425,20 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
      * a more restrictive/"safer" one for nighttime pools.
      * @param messages
      * @param playerInfo
-     * @param useTimeout
      * @returns {Promise<*[]>}
      */
-    async generatePoolByTimeRange(messages = [], playerInfo = null, useTimeout = false) {
+    async generatePoolByTimeRange(messages = [], playerInfo = null) {
         const nightTimeStart = this.options.useNightHours.startTimeUTC
         const nightTimeEnd = this.options.useNightHours.endTimeUTC
         let pool;
         let usedList;
         if (this.options.useNightHours.enabled && checkIfTimeInRange(nightTimeStart, nightTimeEnd, new Date())) {
             this.verbose(1, 'Generating pool using nighttime layerlist.')
-            pool = await this.generatePoolFromParameters(messages, playerInfo, useTimeout, this.nightTimeLayerList)
+            pool = await this.generatePoolFromParameters(messages, playerInfo, this.nightTimeLayerList)
             usedList = 'NightTimeList'
         } else {
             this.verbose(1, 'Generating pool using regular layerlist.')
-            pool = await this.generatePoolFromParameters(messages, playerInfo, useTimeout, this.curatedLayerList);
+            pool = await this.generatePoolFromParameters(messages, playerInfo, this.curatedLayerList);
             usedList = 'DayTimeList'
         }
         await this.customVoteLog(layersArrayToString(pool, layerToStringShortCompact, false), 2)
@@ -964,12 +961,10 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     }
 
     // Generates the pool of maps from the paramaters given to the command. For ex. !genpool Narva Mutaha Yehorivka will generate a pool of those maps
-    async generatePoolFromParameters(splitMessage = [], playerInfo = null, timeout = false, layerList) {
+    async generatePoolFromParameters(splitMessage = [], playerInfo = null, layerList) {
 
         // This is a really stupid hack to ensure that the "persistent history" plugin can load the matches from the database before the pool is generated.
-        if (timeout) {
-            await new Promise((resolve) => setTimeout(resolve, 200));
-        }
+
 
         const mapSizes = ['small', 'medium', 'large'];
         const gameModes = ['aas', 'raas', 'invasion', 'tc', 'insurgency', 'demolition'];
@@ -1009,11 +1004,10 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             };
         });
 
-
+        // TODO refactor this functionality into it's own
         /**
          * Parse and sort all the various parameters here.
          */
-
         for (const parameter of parameters) {
             this.verbose(2, `Parameter: ${parameter}`);
             const level = getLevelFromMapList(parameter, this.mapList);
@@ -1737,21 +1731,18 @@ function checkIfTimeInRange(start, end, currentTime = new Date()) {
     return startTotalMinutes <= currentTotalMinutes && currentTotalMinutes <= endTotalMinutes;
 }
 
-function generateRegularLayerList(allLayers, balanceDifferential, assymmetryDifferential) {
 
-    console.log(`Regular list: Applying balance differential filter of: ${balanceDifferential}.`)
+
+function generateRegularLayerList(allLayers, logger = null, balanceDifferential, assymmetryDifferential) {
+    if (logger) {
+        logger.verbose("TTCustomMapVote", 1, `Regular list: Applying balance differential filter of: ${balanceDifferential}.`)
+        logger.verbose("TTCustomMapVote", 1, `Regular list: Applying asymmetry score of ${assymmetryDifferential}`)
+    }
     allLayers = allLayers.filter(layer => Math.abs(layer.balanceDifferential) < balanceDifferential)
-    console.log(`Regular list: Applying assymetry score of ${assymmetryDifferential}`)
-    allLayers = allLayers.filter(layer => Math.abs(layer.asymmetryScore) < assymmetryDifferential)
+    if (allLayers[0]?.asymmetryScore) {
+        allLayers = allLayers.filter(layer => Math.abs(layer.asymmetryScore) < assymmetryDifferential)
+    }
 
-            // this.verbose(1, `Applying balance differential filter of: ${this.options.balanceDifferential}.`)
-        // const lengthBefore = rawLayerList.length
-        // rawLayerList = rawLayerList.filter(layer => Math.abs(layer.balanceDifferential) < this.options.balanceDifferential)
-        // const layersRemoved = lengthBefore - rawLayerList.length
-        // this.verbose(2, `Layers removed: ${layersRemoved}`)
-        // this.verbose(1, `Layer count after applying balance filter: ${rawLayerList.length}`)
-
-    // TODO figure out a way to add logging and logging levels here.
     return allLayers
 }
 

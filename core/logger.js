@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 
-class Logger {
+export class Logger {
   constructor() {
     this.verboseness = {};
     this.colors = {};
