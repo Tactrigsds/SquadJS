@@ -2,15 +2,15 @@ import {
     checkIfTimeInRange,
     hasSpecificFactionAndSubfactions,
     hasSpecificLayer,
-    filterRecentFactions,
+    filterRecentFactionMatchups,
     weightedRandomSelection
     // getLayerListLogPath,
 } from '../squad-server/plugins/tt-custom-mapvote.js'
 import * as assert from "assert";
 import fs from "fs";
 import { layerList } from "./layerListLoaded.js";
-// import {recentMatchHistoryTest1} from "./recentMatchesUtils.js";
-import { recentMatchHistoryTest1, recentMatchHistoryTest2} from "./recent-matches-utils.js";
+// import {recentMatchHistoryTestDataActual1} from "./recentMatchesUtils.js";
+import { recentMatchHistoryTestDataActual1, recentMatchHistoryTest2} from "./recent-matches-utils.js";
 import { getFormattedDateForLog, getLayerListLogPath} from "../squad-server/utils/utils.js";
 import sinon from 'sinon';
 import { expect } from 'chai';
@@ -198,14 +198,14 @@ describe('Test functionality for ensuring no team will play the same faction mul
     const team1 = "MEA_S_CombinedArms"
     const team2 = "INS_S_CombinedArms"
     const layerListPath = "tests/layerlistFullV5.csv"
-    const actualRecentFaction1g1 = "MEA"
-    const actualRecentFaction2g1 = "INS"
-    const actualRecentFaction1g2 = "CAF"
-    const actualRecentFaction2g2 = "RGF"
+    const actualRecentFaction1g1 = "USMC"
+    const actualRecentFaction2g1 = "VDV"
+    const actualRecentFaction1g2 = "MEA"
+    const actualRecentFaction2g2 = "INS"
 
     it('should ensure that no team can play the same factions right after one another', async function () {
         const fullLayerList = await loadLayerListFromDisk(layerListPath)
-        const filteredList = filterRecentFactions(fullLayerList, recentMatchHistoryTest1, team1, team2)
+        const filteredList = filterRecentFactionMatchups(fullLayerList, recentMatchHistoryTestDataActual1)
         for (const layer of filteredList) {
             assert.notEqual(actualRecentFaction1g1, layer.faction2)
             assert.notEqual(actualRecentFaction2g1, layer.faction1)
@@ -214,10 +214,10 @@ describe('Test functionality for ensuring no team will play the same faction mul
 
     it('should ensure that no team can play the same faction until 2 games after the last time they played it.', async function () {
         const fullLayerList = await loadLayerListFromDisk(layerListPath)
-        const filteredList = filterRecentFactions(fullLayerList, recentMatchHistoryTest1, team1, team2);
+        const filteredList = filterRecentFactionMatchups(fullLayerList, recentMatchHistoryTestDataActual1);
         for (const layer of filteredList) {
-            assert.notEqual(actualRecentFaction1g2, layer.faction1, 'Same team got the same faction 2 games after');
-            assert.notEqual(actualRecentFaction2g2, layer.faction2, 'Same team got the same faction 2 games after');
+            assert.notEqual(actualRecentFaction1g2, layer.faction1, `Same team got the same faction 2 games after: ${layer.faction1} == ${actualRecentFaction1g2}`);
+            assert.notEqual(actualRecentFaction2g2, layer.faction2, `Same team got the same faction 2 games after: ${layer.faction2} == ${actualRecentFaction2g2}`);
         }
     });
 
@@ -228,16 +228,8 @@ describe('Test functionality for ensuring no team will play the same faction mul
             'PLAAGF'
         ])
 
-        const actualRecentFaction1g1 = "PLA"
-        const actualRecentFaction1g2 = "MEA"
-        const actualRecentFaction2g1 = "PLAAGF"
-        const actualRecentFaction2g2 = "RGF"
-
-        const team1 = "PLANMC_S_CombinedArms"
-        const team2 = "INS_S_CombinedArms"
-
         const fullLayerList = await loadLayerListFromDisk(layerListPath)
-        const filteredList = filterRecentFactions(fullLayerList, recentMatchHistoryTest2, team1, team2);
+        const filteredList = filterRecentFactionMatchups(fullLayerList, recentMatchHistoryTest2);
         for (const layer of filteredList) {
             assert.equal(PLA_FACTIONS.includes(layer.faction2), false)
             // assert.equal(PLA_FACTIONS.includes(layer.faction1), false)

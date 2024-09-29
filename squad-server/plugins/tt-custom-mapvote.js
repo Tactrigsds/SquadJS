@@ -181,13 +181,13 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 description: "The folder that the layerlist logs will be stored in.",
                 default: './logfolder'
             },
-            asymmetryDifferential: {
-                required: false,
-                description: '',
-                default: {
-                    regular: 3.0,
-                }
-            },
+            // asymmetryDifferential: {
+            //     required: false,
+            //     description: '',
+            //     default: {
+            //         regular: 3.0,
+            //     }
+            // },
             globallyBannedLayers: {
                 required: false,
                 description: 'Layers that are filtered out from all types of layerlists.',
@@ -216,6 +216,14 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     medium: 20,
                     small: 20
                 }
+            },
+            regularLayerListFilters: {
+              required: false,
+              description: "",
+              default: {
+                  balanceDifferential: 2.5,
+                  asymmetryDifferential: 3.0,
+              }
             },
             nightTimeLayerListFilters: {
                 required: false,
@@ -341,8 +349,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             rawLayerList,
             Logger,
             'Regular LayerList',
-            this.options.balanceDifferential,
-            this.options.asymmetryDifferential.regular,
+            this.options.regularLayerListFilters.balanceDifferential,
+            this.options.regularLayerListFilters.asymmetryDifferential,
             null,
             null,
             null,
@@ -557,7 +565,9 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         Get version from layerlist.
          */
         const versionRegex = /^/
-        lines.slice(1)
+
+        // Remove csv header.
+        lines = lines.slice(1).map(line => line.trim())
 
         // TODO create some sort of method for infering the layer list version.
 
@@ -595,8 +605,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
         else if (layerListVersion === LAYER_LIST_VERSION_ENUM.VERSION2_TO_6) {
             const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
-            // Remove csv header.
-            lines = lines.slice(1).map(line => line.trim())
             for (let line of lines) {
                 if (!regex.test(line)) {
                     continue
@@ -632,7 +640,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         else if (layerListVersion === LAYER_LIST_VERSION_ENUM.VERSION7) {
             const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
             // Remove csv header.
-            lines = lines.slice(1).map(line => line.trim())
             for (let line of lines) {
                 if (!regex.test(line)) {
                     continue
@@ -1347,14 +1354,13 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             return currentMapPool;
         }
 
+        this.verbose(1, `No picks available with earlier filters, reverting to baseline...`)
         // The fallback in case we weren't able to generate a pool with the specific map picks or with the global filters.
         const temp = this.generatePoolBase(
             currentMapPool,
             allLayers,
             recentMatches,
-            false,
             POOL_DUPLICATE_FILTERS_ENUM.ALLOW_NO_DUPLICATES,
-            false,
             this.mapPoolSize - currentMapPool.length
         );
         if (temp.length) {
