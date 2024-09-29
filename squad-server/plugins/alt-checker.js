@@ -1,8 +1,7 @@
 import DiscordBasePlugin from './discord-base-plugin.js';
 import DBLog from './db-log.js';
 import Sequelize, { NOW, Op, QueryTypes } from 'sequelize';
-
-const delay = (ms) => new Promise((res, rej) => setTimeout(res));
+const delay = (ms) => new Promise((res, rej) => setTimet(res));
 
 const RETURN_TYPE = {
     NO_MATCH: 0,
@@ -59,6 +58,8 @@ export default class AltChecker extends DiscordBasePlugin {
         this.onPlayerConnected = this.onPlayerConnected.bind(this);
         this.getPlayerByName = this.getPlayerByName.bind(this);
         this.getPlayersByUsernameDatabase = this.getPlayersByUsernameDatabase.bind(this);
+
+        this.DBLogPlugin;
 
         this.warn = (steamid, msg) => { this.server.rcon.warn(steamid, msg); };
         this.kick = (eosID, reason) => { this.server.rcon.execute(`AdminKick "${eosID}" ${reason}`); };
@@ -126,7 +127,7 @@ export default class AltChecker extends DiscordBasePlugin {
         const matched = messageContent.match(regex)
 
         if (!matched) {
-            // this.verbose(1, `"${message}" will not be processed.`)
+            //this.verbose(1, `"${message}" will not be processed.`)
             return RETURN_TYPE.NO_MATCH;
         }
         this.verbose(1, `"${message}" has been recognized as a known command and will be processed.`)

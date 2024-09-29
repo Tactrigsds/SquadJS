@@ -1,13 +1,10 @@
 import DiscordBasePlugin from "./discord-base-plugin.js";
 import fs from 'fs';
-import {defaultMapList, factionMap, getSubfaction, subfactionAbbreviations} from '../utils/faction-constants.js'
+import {defaultMapList, factionMap, subfactionAbbreviations} from '../utils/faction-constants.js'
 import axios from "axios";
 import path from "path";
 import Logger from 'core/logger';
-import {
-    getFormattedDateForLog,
-    getLayerListLogPath
-} from "../utils/utils.js";
+import {getFormattedDateForLog, getLayerListLogPath} from "../utils/utils.js";
 
 /*
 KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
@@ -166,6 +163,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 description: "Whether to set a random layer on match start, used as a fallback instead of the inbuilt layerlist on the server.",
                 default: {
                     enabled: false,
+                    delayInSeconds: 90,
                     autoSetSafeMapAfterSeeding: false
                 }
             },
@@ -263,6 +261,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.clearVote = this.clearVote.bind(this);
         this.generatePoolByTimeRange = this.generatePoolByTimeRange.bind(this)
         this.onDatabaseUpdated = this.onDatabaseUpdated.bind(this)
+        this.retrieveAndProcessRecentMatches = this.retrieveAndProcessRecentMatches.bind(this)
+        this.parsePoolParameters = this.parsePoolParameters.bind(this)
 
         this.mapvote = false;
         this.voteInProgress = false;
@@ -287,11 +287,11 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.server.on(this.server.eventsEnum.newGame, this.onNewGame);
         this.server.on(this.server.eventsEnum.databaseUpdated, this.onDatabaseUpdated)
         this.mapPoolSize = this.options.votingPoolSize
-        this.curatedLayerList = []
+        this.regularLayerList = []
         this.server.autoSetLayerOnRoundStart = this.options.autoSetLayerOnRoundStart.enabled
+        // console.log(`AutoStart Enabled: ${this.server.autoSetLayerOnRoundStart}`)
 
         // Load the weights(chance of a gamemode being picked) from the config file.
-
         this.gameModeWeights = [
           { option: "RAAS", weight: this.options.defaultGameModeWeights.raas },
           { option: "AAS", weight: this.options.defaultGameModeWeights.aas },
@@ -337,7 +337,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.verbose(2, `Full layer list length after: ${rawLayerList.length}`)
 
         // Initialize the regular layer list.
-        this.curatedLayerList = filterLayerList(
+        this.regularLayerList = filterLayerList(
             rawLayerList,
             Logger,
             'Regular LayerList',
@@ -351,7 +351,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             false
         )
 
-        // Initialize night time layer list.
+        // Initialize nighttime layer list.
         this.nightTimeLayerList = filterLayerList(
             rawLayerList,
             Logger,
@@ -381,7 +381,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.options.safeLayerListFilters.removeLargeLayersWithPoorTransportScore
         )
 
-        this.verbose(1, `Regular layer list length: ${this.curatedLayerList.length}`)
+        this.verbose(1, `Regular layer list length: ${this.regularLayerList.length}`)
         this.verbose(1, `Night time layer list length: ${this.nightTimeLayerList.length}`)
         this.verbose(1, `Safe/AutoSet layer list length: ${this.safeLayerList.length}`)
 
@@ -425,25 +425,20 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         // TODO change to use a different variable, perhaps something like "autosetMap", which the nextlayerset plugin can use
         // To then change the "this.server.nexltayerset" variable once the map set is detected.
         setTimeout(async () => {
-            if (this.server.autoSetLayerOnRoundStart) {
-                if (this.server.currentMap.layer.includes('Jensen') || this.server.currentMap.layer.includes('Seed')) {
-                    return
-                }
-            }
-
-            const tempPool = await this.generatePoolFromParameters([], null, this.safeLayerList);
+            const tempOptions = await this.parsePoolParameters([], null)
+            const tempPool = await this.generatePoolFromParameters(this.safeLayerList, [], tempOptions);
             this.server.warnAllAdmins('SquadJS: Setting random pick from map pool as a fallback.')
             await this.setPoolPickOnRoundStart(tempPool)
             setTimeout(() => {
                 this.server.nextLayerSet = false
             }, 10 * 1000)
-        }, 90 * 1000)
+        }, this.options.autoSetLayerOnRoundStart.delayInSeconds * 1000)
     }
 
     async onDatabaseUpdated() {
         this.mapPool = []
         setTimeout(async () => {
-            this.mapPool = await this.generatePoolByTimeRange([], null, false)
+            this.mapPool = await this.generatePoolByTimeRange([], null)
         }, 10 * 1000)
     }
 
@@ -453,6 +448,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
      * @returns {Promise<void>}
      */
     async setPoolPickOnRoundStart(pool) {
+        console.log(`AutoSet map pool:`)
+        console.log(pool)
         const mapPick = this.getRandomArrayElement(pool)
         await this.customVoteLog(layerToStringShortCompact(mapPick), 3)
         if (!mapPick) {this.verbose(1, 'Something went wrong when trying to set the next map on round start.'); return}
@@ -526,15 +523,19 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         const nightTimeEnd = this.options.useNightTimeLayerList.endTimeUTC
         let pool;
         let usedList;
+
+        const options = await this.parsePoolParameters(messages, playerInfo)
+
         if (this.options.useNightTimeLayerList.enabled && checkIfTimeInRange(nightTimeStart, nightTimeEnd, new Date())) {
             this.verbose(1, 'Generating pool using nighttime layerlist.')
-            pool = await this.generatePoolFromParameters(messages, playerInfo, this.nightTimeLayerList)
+            pool = await this.generatePoolFromParameters(this.nightTimeLayerList, [], options)
             usedList = 'NightTimeList'
         } else {
             this.verbose(1, 'Generating pool using regular layerlist.')
-            pool = await this.generatePoolFromParameters(messages, playerInfo, this.curatedLayerList);
+            pool = await this.generatePoolFromParameters(this.regularLayerList, [], options);
             usedList = 'DayTimeList'
         }
+
         await this.customVoteLog(layersArrayToString(pool, layerToStringShortCompact, false), 2)
         const layerString = layersArrayToString(pool, layerToStringShort, true).trimEnd()
         this.verbose(2, `Generated pool: \n${layerString}`)
@@ -976,8 +977,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
                 // TODO this will have to be changed where the pool reroll is generated *inside* the pool generation function.
 
-                // const tempPool = await this.generatePoolFromParameters(tempParameters, playerInfo, false, this.curatedLayerList);
-                const tempPool = await this.generatePoolByTimeRange(tempParameters, playerInfo, false)
+                const tempPool = await this.generatePoolByTimeRange(tempParameters, playerInfo)
                 const newPool = []
 
                 for (let i = 0; i < this.mapPoolSize; i++) {
@@ -1011,7 +1011,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     }
 
     async sendCurrentPool(playerInfo, headerMessage) {
-        if (!this.curatedLayerList || !this.curatedLayerList.length) {
+        if (!this.regularLayerList || !this.regularLayerList.length) {
             this.verbose(1, 'Curated layer list not loaded properly, pool generation not possible.');
             await this.server.rcon.warn(
                 playerInfo.steamID,
@@ -1056,16 +1056,11 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
     }
 
-
-    /**
-     * This is the main function responsible for parsing filters, filter down viable layers based on those filters,
-     * And then
-     * @param splitMessage
-     * @param playerInfo
-     * @param layerList
-     * @returns {Promise<*[]>}
-     */
-    async generatePoolFromParameters(splitMessage = [], playerInfo = null, layerList) {
+    async parsePoolParameters(splitMessage = [], playerInfo) {
+        // Convert all parameters to lower case, to make them easier to work with.
+        const messages = splitMessage.map(message => message.toLowerCase().trim());
+        // We cut the first message since that's going to be the command itself.
+        const parameters = messages.slice(1);
 
         const mapSizes = ['small', 'medium', 'large'];
         const gameModes = ['aas', 'raas', 'invasion', 'tc', 'skirmish'];
@@ -1073,42 +1068,14 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         const assymmetricalIdentifiers = ['asymm', 'asym', 'assymetrical'];
         const anySubfactionIdentifiers = ['any', 'random'];
 
-        // TODO improve the handling for the various flags and filters.
-        // Global filters represent filters that will be used for all picks for the pool, assuming there are enough valid layers to do so.
         const globalFilters = { symmetrical: false, mapSize: '', gameMode: '', subfactionSymmetry: null, newUnits: false };
 
-        this.verbose(1, 'Generating map pool...');
-        const desiredMaps = [];
-        const messages = splitMessage.map(message => message.toLowerCase().trim());
-        const parameters = messages.slice(1);
         const globalFactions = [];
         const validParameters = [];
         const invalidParameters = [];
         const desiredMapSizes = [];
-        const slotOptions = [];
-        const currentMapPool = [];
-        const allLayers = layerList;
+        const desiredMaps = [];
 
-        // eslint-disable-next-line no-unused-vars
-        const recentMatchups = [];
-        let recentMatches = this.server.getMatchHistoryFromDB(true);
-        recentMatches = recentMatches.map(match => {
-            return {
-                level: match.map,
-                layer: match.layerClassname,
-                levelTrimmed: match.layerClassname?.split('_')[0].toLowerCase().replace(/\s/g, ''),
-                layerTrimmed: match.layerClassname?.toLowerCase().replace(/\s/g, ''),
-                faction1: match.team1,
-                faction2: match.team2,
-                subfaction1: match.subFactionTeam1,
-                subfaction2: match.subFactionTeam2
-            };
-        });
-
-        // TODO refactor this functionality into it's own
-        /**
-         * Parse and sort all the various parameters here.
-         */
         for (const parameter of parameters) {
             this.verbose(2, `Parameter: ${parameter}`);
             const level = getLevelFromMapList(parameter, this.mapList);
@@ -1116,12 +1083,10 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             if (level && desiredMaps.length < this.mapPoolSize) {
                 desiredMaps.push(level);
                 validParameters.push(parameter);
-
             }
             else if (faction && !globalFactions.includes(faction)) {
                 globalFactions.push(faction)
                 validParameters.push(parameter)
-
             }
             else if (mapSizes.includes(parameter) && desiredMapSizes.length < this.mapPoolSize) {
                 desiredMapSizes.push(parameter);
@@ -1167,7 +1132,90 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             await this.server.rcon.warn(playerInfo.steamID, invalidParameters.join(', '));
         }
 
-        this.previousParameters = validParameters;
+        return { validParameters: validParameters, globalFilters: globalFilters, desiredMaps: desiredMaps, desiredMapSizes: desiredMapSizes }
+    }
+
+
+    async retrieveAndProcessRecentMatches() {
+        let recentMatches = this.server.getMatchHistoryFromDB(false);
+
+        const currentFactions = await this.server.getCurrentTeamsAndSubfactions();
+
+        /*
+        The first element of the recent matches array, which corresponds to the current match,
+        doesn't have faction information stored yet, thus we need to query the server and add it.
+         */
+        recentMatches[0].team1Short = currentFactions.faction1
+        recentMatches[0].team2Short = currentFactions.faction2
+        recentMatches[0].subFactionShortTeam1 = currentFactions.subfaction1
+        recentMatches[0].subFactionShortTeam2 = currentFactions.subfaction2
+
+        recentMatches = recentMatches.filter(match => { return match.team1Short && match.team2Short })
+
+        // Filter the matches into a format that's easier to use.
+        recentMatches = recentMatches.map(match => {
+            /*
+            If a subfaction isn't set, the server defaults it to CombinedArms.
+            On small and medium layers, also isn't possible to set a specific subfaction
+            But it's considered 'CombinedArms' every time.
+
+             */
+
+            if (!match.subFactionShortTeam1) {
+                match.subFactionShortTeam1 = 'CombinedArms'
+            }
+            if (!match.subFactionShortTeam2) {
+                match.subFactionShortTeam2 = 'CombinedArms'
+            }
+
+            return {
+                level: match.map,
+                layer: match.layerClassname,
+                levelTrimmed: match.layerClassname?.split('_')[0].toLowerCase().replace(/\s/g, ''),
+                layerTrimmed: match.layerClassname?.toLowerCase().replace(/\s/g, ''),
+                faction1: match.team1Short,
+                faction2: match.team2Short,
+                subfaction1: match.subFactionShortTeam1,
+                subfaction2: match.subFactionShortTeam2
+            };
+        });
+
+        return recentMatches
+    }
+
+    /**
+     *
+     * @param layerList
+     * @param recentMatches
+     * @param historyDepth How many matches back the function will look to remove maps.
+     * @returns {Promise<void>}
+     */
+
+
+
+
+    /**
+     * This is the main function responsible for parsing filters, filter down viable layers based on those filters,
+     * And then
+     * @param layerList
+     * @param currentMapPool
+     * @param options Object containing parameters and filters that will be applied to all pool picks.
+     * @returns {Promise<*[]>}
+     */
+    async generatePoolFromParameters(layerList, currentMapPool = [], options) {
+
+        // TODO improve the handling for the various flags and filters.
+        // Global filters represent filters that will be used for all picks for the pool, assuming there are enough valid layers to do so.
+        const poolSlot = [];
+        const allLayers = layerList;
+        const globalFilters = options.globalFilters
+        const validParameters = options.validParameters
+        const desiredMaps = options.desiredMaps
+        const desiredMapSizes = options.desiredMapSizes
+
+        const recentMatches = await this.retrieveAndProcessRecentMatches();
+
+        // If no specific subfaction symmetry has been set, we want the default to be random/random.
         if (!globalFilters.subfactionSymmetry) {
             globalFilters.subfactionSymmetry = SUBFACTION_SYMMETRY_ENUM.RANDOM
         }
@@ -1182,19 +1230,18 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
           This here defines the default options if there are no valid parameters given.
          */
         if (validParameters.length === 0) {
-            this.verbose(2, 'Running pool generation with default parameters..');
             const tempSizes = [];
+            this.verbose(2, 'Running pool generation with default parameters..');
             for (let i = 0; i < this.mapPoolSize; i++) {
                 tempSizes.push(weightedRandomSelection(this.mapSizeWeights));
             }
             const randomInt = getRandomInt(0, this.mapPoolSize - 1);
             const randomSize = tempSizes[randomInt];
             tempSizes.splice(randomInt, 1);
-            slotOptions.push(createSlotOptionFilters(SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL, randomSize, weightedRandomSelection(this.gameModeWeights)));
+            poolSlot.push(createPoolSlotFilters(SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL, randomSize, weightedRandomSelection(this.gameModeWeights)));
             for (const size of tempSizes) {
-                slotOptions.push(createSlotOptionFilters(SUBFACTION_SYMMETRY_ENUM.RANDOM, size, weightedRandomSelection(this.gameModeWeights)));
+                poolSlot.push(createPoolSlotFilters(SUBFACTION_SYMMETRY_ENUM.RANDOM, size, weightedRandomSelection(this.gameModeWeights)));
             }
-            this.verbose(3, `Default parameters filter options per map: ${slotOptions}`);
         }
 
         // Create get the filters and maps and combine them.
@@ -1212,29 +1259,28 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         // Find picks based on the maps given as parameters.
         // We want these to take precedence.
         // If one of the map options does not have a valid pick, we simply move on and have broader filters.
-        for (const option of desiredMapFilters) {
-            const filteredMaps = applyFiltersFromParameters(
+        for (const slot of desiredMapFilters) {
+            const filteredLayers = applyFiltersToLayerListFromParameters(
                 allLayers,
-                option.map,
-                option.symmetryOption,
-                option.gameMode,
-                null
+                recentMatches,
+                0,
+                true,
+                slot.map,
+                slot.symmetryOption,
+                slot.gameMode,
+                null,
+                slot.useNewUnits
             );
 
-            // There are no valid picks according to the filters, so we continue.
-            if (!filteredMaps || filteredMaps.length === 0) {
-                if (playerInfo) {
-                    await this.server.rcon.warn(
-                        playerInfo.steamID,
-                        `Specified map did not have any available layers according to the given filters: \n${option.map}`
-                    );
-                }
-                continue;
-            }
+            const map = this.generatePoolBase(
+                currentMapPool,
+                filteredLayers,
+                recentMatches,
+                POOL_DUPLICATE_FILTERS_ENUM.ALLOW_DUPLICATE_LAYERS,
+                1);
 
-            const map = this.generatePoolBase(currentMapPool, filteredMaps, recentMatches, true, POOL_DUPLICATE_FILTERS_ENUM.ALLOW_DUPLICATE_LAYERS, false, 1);
             if (map && map.length > 0) {
-                currentMapPool.push(map[0]);
+                currentMapPool.push(...map);
             }
         }
 
@@ -1243,7 +1289,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
 
         // Generate any missing filter options.
-        for (let i = currentMapPool.length + slotOptions.length; i < this.mapPoolSize; i++) {
+        for (let i = currentMapPool.length + poolSlot.length; i < this.mapPoolSize; i++) {
             let mapSize;
             let gameMode;
 
@@ -1261,31 +1307,34 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 gameMode = weightedRandomSelection(this.gameModeWeights);
             }
 
-            const option = createSlotOptionFilters(
+            const option = createPoolSlotFilters(
                 globalFilters.subfactionSymmetry,
                 mapSize,
                 gameMode,
                 globalFilters.newUnits
             );
-            slotOptions.push(option);
+            poolSlot.push(option);
         }
 
 
         // Handle defaults and attempt to get maps from the filters that were specified if not enough maps were supplied.
-        for (const option of slotOptions) {
-            const filteredLayers = applyFiltersFromParameters(
+        for (const slot of poolSlot) {
+            const filteredLayers = applyFiltersToLayerListFromParameters(
                 allLayers,
+                recentMatches,
+                this.options.minMatchesBeforeDupeMap,
+                true,
                 null,
-                option.symmetryOption,
-                option.gameMode,
-                option.mapSize,
-                option.useNewUnits
+                slot.symmetryOption,
+                slot.gameMode,
+                slot.mapSize,
+                slot.useNewUnits
             );
 
-            const map = this.generatePoolBase(currentMapPool, filteredLayers, recentMatches, false, POOL_DUPLICATE_FILTERS_ENUM.ALLOW_NO_DUPLICATES, false, 1);
+            const map = this.generatePoolBase(currentMapPool, filteredLayers, recentMatches,  POOL_DUPLICATE_FILTERS_ENUM.ALLOW_NO_DUPLICATES, 1);
             // Check if map is not empty before adding to mapPool
             if (map && map.length > 0) {
-                currentMapPool.push(map[0]);
+                currentMapPool.push(...map);
             }
         }
 
@@ -1321,40 +1370,29 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
      * @param existingPool An array of the existing pool, if applicable.
      * @param layerList
      * @param matchHistory
-     * @param allowRecentlyPlayedMaps
      * @param allowDuplicateMapsLayers
-     * @param poolLength
-     * @param allowRecentFactions
+     * @param picksToGenerate
      * @returns {*[]}
      */
     generatePoolBase(
         existingPool,
         layerList,
         matchHistory,
-        allowRecentlyPlayedMaps,
         allowDuplicateMapsLayers,
-        allowRecentFactions = false,
-        poolLength,
+        picksToGenerate,
     ) {
         const newPool = [];
         if (!existingPool) {
             existingPool = []
         }
 
-        if (!allowRecentlyPlayedMaps) {
-            layerList = layerList.filter(layer => !checkIfMapIsRecentlyPlayed(layer, matchHistory));
-        }
-
-        if (!allowRecentFactions) {
-            layerList = filterRecentFactions(layerList, matchHistory, this.server.teamOne, this.server.teamTwo)
-        }
 
         // If there are not enough available layers or too many duplicates in recently played layers, return an empty pool
-        if (layerList.length + newPool.length < poolLength) {
+        if (layerList.length + newPool.length < picksToGenerate) {
             return newPool;
         }
 
-        while (layerList.length && newPool.length < poolLength) {
+        while (layerList.length && newPool.length < picksToGenerate) {
             const candidateInt = getRandomInt(0, layerList.length - 1);
             const candidatePick = layerList[candidateInt];
 
@@ -1431,7 +1469,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             .map((value, index) => `${this.voteOptions[index]}: ${value} votes,`)
             .join(' ')
             .slice(0, -1);
-        console.log(totalsStr)
         if (tie) {
             await this.server.rcon.broadcast(
                 `Server: There has been a tie! Total votes: ${this.ballotBox.size}.\n${totalsStr}`
@@ -1563,46 +1600,12 @@ function initializeLogFolder(logFolder, plugin) {
 }
 
 
-function getRandomMapSizeDefaults() {
-    const rng = getRandomInt(0, 100);
-    switch (true) {
-        case (rng < 15):
-            return MAP_SIZES_ENUM.SMALL;
-        case (rng < 55):
-            return MAP_SIZES_ENUM.MEDIUM;
-        default:
-            return MAP_SIZES_ENUM.LARGE;
-    }
-}
-
-
-/**
- * Defines and retrieves the wanted ratio of game modes.
- * @returns {string}
- */
-function getRandomGameModeDefaults() {
-    let gameMode;
-    const rng = getRandomInt(0, 99)
-    const chanceOfRaas = 70
-    // TODO switch to using enums for this
-    if (rng < chanceOfRaas) {
-        gameMode = 'RAAS'
-    } else {
-        gameMode = 'AAS'
-    }
-
-    return gameMode
-}
 
 function getRandomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 
-function checkIfMapIsRecentlyPlayed(layer, recentMatches) {
-    const processedLayer = layer.level.toLowerCase().replace(/\s/g, '');
-    return recentMatches.some((match) => processedLayer.includes(match.levelTrimmed));
-}
 
 
 /**
@@ -1634,12 +1637,48 @@ function getLevelFromMapList(message, mapList) {
     return foundMap;
 }
 
-// TODO include a faction vs faction filter at some point?
-function applyFiltersFromParameters(layers, map, symmetryFilter, gameModeFilter, mapSizeFilter, useNewUnits) {
-    layers = layers.filter(layer => !hasSpecificFactionAndSubfactions(layer, bannedSpecificSubfactions))
+function mapRecentlyPlayed(layer, recentMatches) {
+    return recentMatches.some((match) => layer.includes(match.levelTrimmed))
+}
 
+
+function filterMapsFromRecentMatches(layerList, recentMatches, historyDepth) {
+    recentMatches = recentMatches.slice(0, historyDepth)
+    function procLayer(layer) {
+        return layer.level.toLowerCase().replace(/\s/g, '')
+    }
+
+    return layerList.filter(layer => !mapRecentlyPlayed(procLayer(layer), recentMatches))
+}
+
+
+
+// TODO include a faction vs faction filter at some point?
+/**
+ * Utility function to apply the various filters to a layer list.
+ * // TODO create unit tests for this function.
+ * @param layerList
+ * @param recentMatches
+ * @param recentlyPlayedMapsLimit
+ * @param disallowRecentFactionMatchups
+ * @param map
+ * @param symmetryFilter
+ * @param gameModeFilter
+ * @param mapSizeFilter
+ * @param useNewUnits
+ * @returns {*}
+ */
+function applyFiltersToLayerListFromParameters(layerList,
+                                               recentMatches,
+                                               recentlyPlayedMapsLimit,
+                                               disallowRecentFactionMatchups,
+                                               map,
+                                               symmetryFilter,
+                                               gameModeFilter,
+                                               mapSizeFilter,
+                                               useNewUnits) {
     if (map) {
-        layers = layers.filter(layer => {
+        layerList = layerList.filter(layer => {
             const potentialMap = layer?.level.replace(' ', '').toLowerCase();
             const trimmedOption = map?.replace(' ', '').toLowerCase();
             return potentialMap.includes(trimmedOption);
@@ -1647,27 +1686,35 @@ function applyFiltersFromParameters(layers, map, symmetryFilter, gameModeFilter,
     }
 
     if (symmetryFilter === SUBFACTION_SYMMETRY_ENUM.SYMMETRICAL) {
-        layers = layers.filter(layer => {
+        layerList = layerList.filter(layer => {
             return hasSymmetricalSubfactions(layer)
         });
     }
     else if (symmetryFilter === SUBFACTION_SYMMETRY_ENUM.ASSYMMETRICAL) {
-        layers = layers.filter(layer => {
+        layerList = layerList.filter(layer => {
             return !hasSymmetricalSubfactions(layer)
         })
     }
 
-    if (gameModeFilter) {
-        layers = layers.filter(layer => getGameMode(layer)?.toLowerCase() === gameModeFilter.toLowerCase());
-    }
-    if (mapSizeFilter) {
-        layers = layers.filter(layer => layer?.size.toLowerCase() === mapSizeFilter.toLowerCase());
-    }
-    if (useNewUnits) {
-        layers = layers.filter(layer => hasNewSubfactions(layer))
+    if (recentlyPlayedMapsLimit) {
+        layerList = filterMapsFromRecentMatches(layerList, recentMatches, recentlyPlayedMapsLimit)
     }
 
-    return layers;
+    if (disallowRecentFactionMatchups) {
+        layerList = filterRecentFactionMatchups(layerList, recentMatches, 2)
+    }
+
+    if (gameModeFilter) {
+        layerList = layerList.filter(layer => getGameMode(layer)?.toLowerCase() === gameModeFilter.toLowerCase());
+    }
+    if (mapSizeFilter) {
+        layerList = layerList.filter(layer => layer?.size.toLowerCase() === mapSizeFilter.toLowerCase());
+    }
+    if (useNewUnits) {
+        layerList = layerList.filter(layer => hasNewSubfactions(layer))
+    }
+
+    return layerList;
 }
 /**
  * Checks if a given layer has symmetrical subfactions
@@ -1680,25 +1727,7 @@ function hasSymmetricalSubfactions(layer) {
     return layer.subfaction1?.toLowerCase() === layer.subfaction2?.toLowerCase();
 }
 
-/**
- *  Utility function used to find the shorthand of a faction from it's long name, which is usually how it's stored in the logs and the in the database.
- *  Hence, we need a mapping to retrieve it's shorthand for use for admin commands.
- *  Example input "Canadian Armed Forces", returns "CAF"
- *
- * @param factionFullName a string used to find the shorthand of a faction.
- * @param factions A map of shorthand and longname faction pairs.
- * @returns {string} Returns a string of the shorthand faction if found, else returns null if not found.
- */
-function getFactionFromLongName(factionFullName, factions) {
-    let foundFaction = ''
-    for (const [longName, shortName] of factions) {
-        if (longName?.toLowerCase().trim() === factionFullName?.toLowerCase().trim()) {
-            foundFaction = { short: shortName, long: longName }
-            break
-        }
-    }
-    return foundFaction
-}
+
 /**
  *  Inverse of the "getFactionFromLongName" function. Retrieves the full name of a faction from it's shorthand.
  *
@@ -1734,7 +1763,7 @@ function createMapSlotOption(map, mapIdentifiers, symmetryOption, gameMode) {
     return { map, mapIdentifiers, symmetryOption, gameMode };
 }
 
-function createSlotOptionFilters(symmetryOption, mapSize, gameMode, useNewUnits) {
+function createPoolSlotFilters(symmetryOption, mapSize, gameMode, useNewUnits) {
     return { symmetryOption, mapSize, gameMode, useNewUnits };
 }
 
@@ -1918,55 +1947,39 @@ function filterLayerList(allLayers,
 }
 
 
+
+
 /**
- *
+ * Function meant to disallow teams from having to play the same team soon after having played it last.
+ * The function also filters out things like duplicate matchups.
  * @param layerList The full layer list to filter layers out from.
  * @param matchHistory An array of objects containing the recent matches.
- * @param currentFaction1 Current faction of team 1.
- * @param currentFaction2 Current faction of team 2.
+ * @param historyDepth The amount of matches that will be checked
  * @returns {*}
  */
-function filterRecentFactions(layerList, matchHistory, currentFaction1, currentFaction2) {
+function filterRecentFactionMatchups(layerList,
+                                     matchHistory,
+                                     historyDepth = 2) {
     // We need to normalize the recent history as well as the current match so that it fits with the format that we take in the layers with.
     let history = [];
-    // The first match includes the current one, which does not include faction data.
-    const recentMatches = matchHistory.slice(1)
 
-    currentFaction1 = currentFaction1.split("_")
-    currentFaction2 = currentFaction2.split("_")
-
-    const currentFactionShort1 = currentFaction1[0]
-    const currentFactionShort2 = currentFaction2[0]
-
-    const currentSubfaction1 = currentFaction1[2]
-    const currentSubfaction2 = currentFaction2[2]
-
-    // We add the info for the current match into the recentMatches list manually.
-    history.push({
-        layer: matchHistory[0]?.layer,
-        faction1: currentFactionShort1,
-        faction2: currentFactionShort2,
-        subfaction1: currentSubfaction1,
-        subfaction2: currentSubfaction2
-    })
-
-    recentMatches.forEach(match => {
-        if (match.faction1 && match.subfaction1 && match.faction2 && match.subfaction2) {
+    matchHistory.forEach(match => {
+        if (match.faction1 && match.faction2) {
             history.push({
-                layer: match?.layer,
-                faction1: getFactionFromLongName(match.faction1, factionMap)?.short,
-                faction2: getFactionFromLongName(match.faction2, factionMap)?.short,
-                subfaction1: getSubfaction(match.subfaction1),
-                subfaction2: getSubfaction(match.subfaction2)
+                layer: match.layer,
+                faction1: match.faction1,
+                faction2: match.faction2,
+                subfaction1: match.subfaction1,
+                subfaction2: match.subfaction2
             })
         }
     })
 
-    history = history.slice(0, 2)
+    history = history.slice(0, historyDepth)
 
     // For example how many matches back should be taken into consideration etc...
 
-    layerList = layerList.filter(layer => {
+    const filteredLayers = layerList.filter(layer => {
         // Ensure that no completely identical matchups happen right after one another.
         if ((history[0].faction1 === layer.faction1 && history[0].faction2 === layer.faction2) ||
             (history[0].faction2 === layer.faction1 && history[0].faction1 === layer.faction2)) {
@@ -1991,9 +2004,8 @@ function filterRecentFactions(layerList, matchHistory, currentFaction1, currentF
             }
         }
         return true;
-    });
-
-    return layerList
+    })
+    return filteredLayers
 }
 
 
@@ -2008,6 +2020,7 @@ function hasNewSubfactions(layer) {
     const newUnits = [
         { faction: 'WPMC', subfaction: 'CombinedArms' },
         { faction: 'WPMC', subfaction: 'LightInfantry' },
+        { faction: 'WPMC', subfaction: 'AirAssault'},
     ]
 
     for (const unit of newUnits) {
@@ -2127,7 +2140,7 @@ export {
     hasSpecificMap,
     hasSpecificFaction,
     hasSymmetricalSubfactions,
-    filterRecentFactions,
+    filterRecentFactionMatchups,
     initializeLogFolder,
     layerToStringFull,
     layerToStringShort,
