@@ -24,6 +24,10 @@ export class Logger {
     this.verboseness[module] = verboseness;
   }
 
+  getVerbosity() {
+    return this.verboseness
+  }
+
   setColor(module, color) {
     this.colors[module] = color;
   }

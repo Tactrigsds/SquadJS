@@ -112,7 +112,7 @@ export default class SquadServerFactory {
         ]
       });
       connector.once(Events.ClientReady, (readyClient) => {
-        console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+        Logger.verbose('SquadServerFactory',1, `Discord client ready! Logged in as ${readyClient.user.tag}`);
       });
       await connector.login(connectorConfig);
       // setup compatability with older plugins for message create event.
