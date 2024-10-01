@@ -1,7 +1,7 @@
 import DiscordBasePlugin from './discord-base-plugin.js';
 import DBLog from './db-log.js';
 import Sequelize, { NOW, Op, QueryTypes } from 'sequelize';
-const delay = (ms) => new Promise((res, rej) => setTimet(res));
+const delay = (ms) => new Promise((res, rej) => setTimeout(res));
 
 const RETURN_TYPE = {
     NO_MATCH: 0,
@@ -69,7 +69,7 @@ export default class AltChecker extends DiscordBasePlugin {
         this.DBLogPlugin = this.server.plugins.find(p => p instanceof DBLog);
         if (!this.DBLogPlugin) return;
 
-        this.options.discordClient.on('message', this.onDiscordMessage);
+        this.options.discordClient.on('messageCreate', this.onDiscordMessage);
         this.server.on('CHAT_MESSAGE', this.onChatMessage);
         this.server.on('PLAYER_CONNECTED', this.onPlayerConnected);
     }
@@ -86,8 +86,12 @@ export default class AltChecker extends DiscordBasePlugin {
 
         this.verbose(1, `${message.author.username}#${message.author.discriminator} has requested an discord alt-check: ${message.content}`)
 
-        const embed = this.generateDiscordEmbed(res);
-        message.channel.send({ embed: embed });
+        try {
+            const embed = this.generateDiscordEmbed(res);
+            message.channel.send({embeds: [embed]})
+        } catch (e) {
+            console.log(e)
+        }
     }
 
     async onChatMessage(message) {
@@ -169,21 +173,24 @@ export default class AltChecker extends DiscordBasePlugin {
         })
 
         await this.sendDiscordMessage({ embed: embed });
+
     }
 
     generateDiscordEmbed(res) {
         let embed
 
+
+
         if (!res || res == RETURN_TYPE.PLAYER_NOT_FOUND || res.length == 0) {
             embed = {
                 title: `Unable to find player`,
                 description: `Player hasn't been found in the database!`,
-                color: 'ff9900',
+                color: 60,
             }
         } else if (res.length > 1) {
             embed = {
                 title: `Alts for IP: ${res[ 0 ].lastIP}`,
-                color: 'FF0000',
+                color: 20,
                 fields: [ {
                     name: 'IP',
                     value: res[ 0 ].lastIP
@@ -204,7 +211,6 @@ export default class AltChecker extends DiscordBasePlugin {
             this.verbose(1, 'No alts found', res)
             embed = {
                 title: `${res[ 0 ].lastName} doesn't have alts!`,
-                color: '00FF00',
                 description: this.getFormattedUrlsPart(res[ 0 ].steamID, res[ 0 ].eosID),
                 fields: []
             }
