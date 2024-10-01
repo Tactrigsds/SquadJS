@@ -36,6 +36,15 @@ const alliances = [
   {alliance: 'PAC', factions: ['PLA', 'PLAAGF', 'PLANMC']},
 ]
 
+const factionGroups = Object.freeze([
+  [
+      'PLA',
+      'PLAAGF',
+      'PLANMC'
+  ]
+])
+
+
 const factionData = `
 Faction,Subfaction,FullName
 ADF,AirAssault,"3rd Battalion, Royal Australian Regiment"

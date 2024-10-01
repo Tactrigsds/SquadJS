@@ -181,13 +181,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 description: "The folder that the layerlist logs will be stored in.",
                 default: './logfolder'
             },
-            // asymmetryDifferential: {
-            //     required: false,
-            //     description: '',
-            //     default: {
-            //         regular: 3.0,
-            //     }
-            // },
             globallyBannedLayers: {
                 required: false,
                 description: 'Layers that are filtered out from all types of layerlists.',
@@ -252,6 +245,11 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     bannedGlobalSubfactions: [],
                     removeLargeLayersWithPoorTransportScore: true
                 }
+            },
+            newSubfactions: {
+                required: false,
+                description: "The subfactions considered new, for use with the 'new' flag for the pool generation.",
+                default: []
             }
         };
     }
@@ -297,7 +295,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.mapPoolSize = this.options.votingPoolSize
         this.regularLayerList = []
         this.server.autoSetLayerOnRoundStart = this.options.autoSetLayerOnRoundStart.enabled
-        // console.log(`AutoStart Enabled: ${this.server.autoSetLayerOnRoundStart}`)
 
         // Load the weights(chance of a gamemode being picked) from the config file.
         this.gameModeWeights = [
@@ -429,7 +426,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 return
             }
         }
-
         // TODO change to use a different variable, perhaps something like "autosetMap", which the nextlayerset plugin can use
         // To then change the "this.server.nexltayerset" variable once the map set is detected.
         setTimeout(async () => {
@@ -869,7 +865,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     let option
                     const variantLong = `${voteOption.layer} ${voteOption.faction1} ${voteOption.subfaction1} vs ${voteOption.faction2} ${voteOption.subfaction2}`;
                     const variantShort = `${voteOption.layer} ${voteOption.faction1} ${subfactionAbbreviations.get(voteOption.subfaction1)} vs ${voteOption.faction2} ${subfactionAbbreviations.get(voteOption.subfaction2)}`;
-
+                    // TODO needs to check the length of *all* options, not just a single one.
                     if (variantLong.length + this.server.voteMessageBaseLength >= this.server.serverBroadcastCharLimit) {
                         option = variantShort
                     } else {
@@ -917,6 +913,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 await this.sendCurrentPool(playerInfo, message);
             }
 
+            // Set next from a pick in the pool, given an index in the pool.
             else if (splitMessage[0] === this.options.setNextFromPoolCommand) {
                 this.verbose(3, 'Set Next Command Triggered');
                 if (!(splitMessage.length === 2)) {
@@ -1022,10 +1019,11 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.verbose(1, 'Curated layer list not loaded properly, pool generation not possible.');
             await this.server.rcon.warn(
                 playerInfo.steamID,
-                'Curated layer was not loaded properly\nUnable to send pool.'
+                'LayerList was not loaded properly\nUnable to send pool.'
             );
             return;
         }
+
         if (!this.mapPool || !this.mapPool.length) {
             await this.server.rcon.warn(
                 playerInfo.steamID,
@@ -1267,6 +1265,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         // We want these to take precedence.
         // If one of the map options does not have a valid pick, we simply move on and have broader filters.
         for (const slot of desiredMapFilters) {
+            // 0 for the recently played maps limit, allows a pick to show up in the pool, even if it has been played recently.
             const filteredLayers = applyFiltersToLayerListFromParameters(
                 allLayers,
                 recentMatches,
@@ -1958,6 +1957,8 @@ function filterLayerList(allLayers,
 /**
  * Function meant to disallow teams from having to play the same team soon after having played it last.
  * The function also filters out things like duplicate matchups.
+ *
+ * Requires the updated DBLog plugin storing short form factions and subfactions to work properly.
  * @param layerList The full layer list to filter layers out from.
  * @param matchHistory An array of objects containing the recent matches.
  * @param historyDepth The amount of matches that will be checked
@@ -1984,7 +1985,6 @@ function filterRecentFactionMatchups(layerList,
     history = history.slice(0, historyDepth)
 
     // For example how many matches back should be taken into consideration etc...
-
     const filteredLayers = layerList.filter(layer => {
         // Ensure that no completely identical matchups happen right after one another.
         if ((history[0].faction1 === layer.faction1 && history[0].faction2 === layer.faction2) ||
@@ -2005,6 +2005,7 @@ function filterRecentFactionMatchups(layerList,
 
         // Ensure that no team has to play the same faction
         if (history.length >= 2) {
+            // History[1] is equivalent to the last valid game.
             if (history[1].faction1 === layer.faction1 || history[1].faction2 === layer.faction2) {
                 return false;
             }

@@ -195,8 +195,6 @@ describe('TestUnsafe/banned functions', function () {
 
 
 describe('Test functionality for ensuring no team will play the same faction multiple times in a row.', function () {
-    const team1 = "MEA_S_CombinedArms"
-    const team2 = "INS_S_CombinedArms"
     const layerListPath = "tests/layerlistFullV5.csv"
     const actualRecentFaction1g1 = "USMC"
     const actualRecentFaction2g1 = "VDV"

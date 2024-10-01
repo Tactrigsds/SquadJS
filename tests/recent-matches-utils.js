@@ -52,25 +52,19 @@ const recentMatchHistoryTestDataActual1 = [
 
 const recentMatchHistoryTest2 = [
   {
-    level: 'Tallil Outskirts',
-    layer: 'Tallil_Invasion_v1',
-    levelTrimmed: 'tallil',
-    layerTrimmed: 'tallil_invasion_v1',
-    faction1: "People's Liberation Army",
-    faction2: 'Middle Eastern Alliance',
-    subfaction1: '3rd Brigade Combat Team, 1st Infantry Division',
-    subfaction2: '1st Battalion, Legion of Babylon'
+    layer: 'PacificProvingGrounds_Seed_v1',
+    faction1: 'USMC',
+    faction2: 'PLANMC',
+    subfaction1: 'CombinedArms',
+    subfaction2: 'CombinedArms'
   },
   {
-    level: 'Manicouagan',
-    layer: 'Manicouagan_Invasion_v1',
-    levelTrimmed: 'manicouagan',
-    layerTrimmed: 'manicouagan_invasion_v1',
-    faction1: 'Canadian Armed Forces',
-    faction2: 'Russian Ground Forces',
-    subfaction1: '1 Canadian Mechanized Brigade Group',
-    subfaction2: '49th Combined Arms Army'
-  }
+    layer: 'Kokan_TC_v1',
+    faction1: 'PLA',
+    faction2: 'PLANMC',
+    subfaction1: 'CombinedArms',
+    subfaction2: 'CombinedArms'
+  },
 ]
 
 
