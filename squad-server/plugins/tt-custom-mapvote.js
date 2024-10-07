@@ -279,9 +279,15 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.voteOptions = [];
         this.recentPoolPicks = []
         this.previousParameters = []
-        this.adminTriggeringPoolGen = { admin: null, steamID: null }
+        this.adminTriggeringPoolGen = { adminName: null, steamID: null }
         this.mapList = this.options.mapList ? this.options.mapList : defaultMapList
-        this.tiedPoolPicks = []
+        this.tiedVoteFlags = {
+            votePicks: [],
+            regularVoteTie: false,
+            mapPoolVoteTie: false
+        }
+
+
         if (!Object.values(LAYER_LIST_VERSION_ENUM).includes(this.options.layerlistVersion)) {
             throw Error('Config does not include a valid layerlist version.')
         }
@@ -417,9 +423,17 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     async onNewGame() {
         this.mapVoteWinner = null;
         this.previousParameters = [];
-        this.tiedPoolPicks = []
         this.server.nextLayerSet = false
-        this.adminTriggeringPoolGen = { admin: null, steamID: null }
+        this.adminTriggeringPoolGen = {
+            admin: null,
+            steamID: null
+        }
+        this.tiedVoteFlags = {
+            votePicks: [],
+            regularVoteTie: false,
+            mapPoolVoteTie: false
+        }
+
 
         // Don't autoset if we're on jensens or a seeding map.
         if (this.server.autoSetLayerOnRoundStart) {
@@ -465,58 +479,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     }
 
 
-    async customVoteLog(message, prefix = 1) {
-        const prefix1 = `LayerList`
-        const prefix2 = `Pool`
-        const prefix3 = `AutoSet`
-
-        // TODO change this into an enum, or find another solution entirely.
-        let activePrefix;
-        switch (prefix) {
-            case 1: {
-                activePrefix = prefix1
-                break
-            }
-            case 2: {
-                activePrefix = prefix2
-                break
-            }
-            case 3: {
-                activePrefix = prefix3
-                break
-            }
-            default: activePrefix = prefix1
-        }
-
-        const currentMap = this.server.currentMap
-        const nextMap = this.server.nextMap
-
-        const currentFaction1 = currentMap.factions.split(" ")[0]
-        const currentFaction2 = currentMap.factions.split(" ")[1]
-
-        const nextFaction1 = nextMap.factions.split(" ")[0]
-        const nextFaction2 = nextMap.factions.split(" ")[1]
-
-        const factionMessage = `currentLayer:${currentMap.layer},currentFaction1:${currentFaction1},currentFaction2:${currentFaction2},nextLayer:${nextMap.layer},nextFaction1:${nextFaction1},nextFaction2:${nextFaction2}`
-
-        const date = new Date()
-        const logMessage = `[${date.toISOString()}]_[${activePrefix}]_[${factionMessage}]_[${message}]\r\n`
-        fs.appendFile(this.layerListLogFile, logMessage, (err) => {
-            if (err) {
-                this.verbose(1, `Error occured when logging the layerlist.`)
-                this.verbose(1, err)
-            }
-        });
-    }
-
-    initializeLogFile(filePath) {
-        try {
-            fs.writeFileSync(filePath, '')
-        } catch (e) {
-            this.verbose(1, `Error when initializing log file.`)
-            this.verbose(1, e)
-        }
-    }
 
     /**
      * Generates a pool depending on if it's day time or in nighttime, using different layerlists,
@@ -531,15 +493,15 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         let pool;
         let usedList;
 
-        const options = await this.parsePoolParameters(messages, playerInfo)
+        const parameters = await this.parsePoolParameters(messages, playerInfo)
 
         if (this.options.useNightTimeLayerList.enabled && checkIfTimeInRange(nightTimeStart, nightTimeEnd, new Date())) {
             this.verbose(1, 'Generating pool using nighttime layerlist.')
-            pool = await this.generatePoolFromParameters(this.nightTimeLayerList, [], options)
+            pool = await this.generatePoolFromParameters(this.nightTimeLayerList, [], parameters)
             usedList = 'NightTimeList'
         } else {
             this.verbose(1, 'Generating pool using regular layerlist.')
-            pool = await this.generatePoolFromParameters(this.regularLayerList, [], options);
+            pool = await this.generatePoolFromParameters(this.regularLayerList, [], parameters);
             usedList = 'DayTimeList'
         }
 
@@ -793,7 +755,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     }
 
     /**
-     * Handles the chat message event. Handles regular players votes, in addition to admin users pool generation,
+     * Handles the chat message event. Handles regular players votes, in addition to adminName users pool generation,
      * read pool and vote start commands.
      * @param info Info about the message event, including the message content, player name, steamid.
      * @returns {Promise<void>}
@@ -812,7 +774,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         const message = info.message.toLowerCase();
 
         /*
-        Chat commands, admin only.
+        Chat commands, adminName only.
          */
         if (!this.options.ignoreChats.includes(info.chat)) {
             if (this.options.generatePoolCommands.includes(splitMessage[0])) {
@@ -842,13 +804,13 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 this.poolGenerationTime = currentTime;
 
                 try {
-                    this.mapPool = await this.generatePoolMain(splitMessage, playerInfo, false);
+                    this.mapPool = await this.generatePoolMain(splitMessage, playerInfo);
                 } catch (err) {
                     await this.server.rcon.warn(playerInfo.steamID, 'Something went wrong when generating pool');
                     this.verbose(1, 'Error occured when sending pool.');
                     this.verbose(1, err);
                 }
-                this.verbose(2, 'Map pool generated, triggered by admin: ' + playerInfo.name);
+                this.verbose(2, 'Map pool generated, triggered by adminName: ' + playerInfo.name);
                 const message = `Newly generated map pool, triggered by: ${playerInfo.name}`;
                 this.sendCurrentPool(playerInfo, message);
                 this.adminTriggeringPoolGen = { admin: playerInfo.name, steamID: playerInfo.steamID}
@@ -863,20 +825,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     return;
                 }
 
-                const options = [];
-                for (const voteOption of this.mapPool) {
-                    let option
-                    const variantLong = `${voteOption.layer} ${voteOption.faction1} ${voteOption.subfaction1} vs ${voteOption.faction2} ${voteOption.subfaction2}`;
-                    const variantShort = `${voteOption.layer} ${voteOption.faction1} ${subfactionAbbreviations.get(voteOption.subfaction1)} vs ${voteOption.faction2} ${subfactionAbbreviations.get(voteOption.subfaction2)}`;
-                    // TODO needs to check the length of *all* options, not just a single one.
-                    if (variantLong.length + this.server.voteMessageBaseLength >= this.server.serverBroadcastCharLimit) {
-                        option = variantShort
-                    } else {
-                        option = variantLong
-                    }
-                    options.push(option);
-                }
-
+                const options = this.processPoolForMapVote(this.mapPool)
                 this.mapVoteRunning = true;
                 this.voteOptions = options;
                 this.callVote(this.voteOptions);
@@ -900,8 +849,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
             else if (this.options.readPoolCommands.includes(splitMessage[0])) {
                 let message;
-                if (this.adminTriggeringPoolGen.admin && this.adminTriggeringPoolGen.steamID) {
-                    message = `Current map pool - pool generation triggered by admin: ${this.adminTriggeringPoolGen.admin}`
+                if (this.adminTriggeringPoolGen.adminName && this.adminTriggeringPoolGen.steamID) {
+                    message = `Current map pool - pool generation triggered by admin: ${this.adminTriggeringPoolGen.adminName}`
                 }
                 else {
                     message = `Current map pool - pool generation triggered by SquadJS`
@@ -1000,6 +949,24 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 await this.sendCurrentPool(playerInfo, `Rerolling map pool with previous parameters:`);
             }
 
+            else if (splitMessage[0] === '!runoff') {
+                let options;
+                if (this.tiedVoteFlags.regularVoteTie) {
+                    this.server.rcon.warn(playerInfo.steamID, `SquadJS: Initiating a runoff vote with selections from the standard vote.`)
+                    options = this.tiedVoteFlags.votePicks
+                }
+                else if (this.tiedVoteFlags.mapPoolVoteTie) {
+                    this.server.rcon.warn(playerInfo.steamID, `SquadJS: Initiating a runoff vote with tied options from the map pool vote.`)
+                    this.mapVoteRunning = true;
+                    options = this.processPoolForMapVote(this.tiedVoteFlags.votePicks)
+                } else {
+                    return this.server.rcon.warn(playerInfo.steamID, `SquadJS: No tie was detected; a runoff vote cannot be started.`)
+                }
+
+                this.voteOptions = options;
+                this.callVote(this.voteOptions);
+            }
+
             // Toggle autoset on or off via a command.
             else if (splitMessage[0] === "!autoset") {
                 if (splitMessage[1] === "on") {
@@ -1053,7 +1020,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             warnList.push(message);
         }
 
-        // Send the layer pool back to the admin
+        // Send the layer pool back to the adminName
         for (let i = 0; i < 3; i++) {
             for (const warnMessage of warnList) {
                 await this.server.rcon.warn(playerInfo.steamID, warnMessage);
@@ -1062,6 +1029,23 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 setTimeout(resolve, this.server.warnMessagePersistenceTimeMilliSeconds)
             );
         }
+    }
+
+    processPoolForMapVote(pool) {
+        const options = [];
+        for (const voteOption of pool) {
+            let option
+            const variantLong = `${voteOption.layer} ${voteOption.faction1} ${voteOption.subfaction1} vs ${voteOption.faction2} ${voteOption.subfaction2}`;
+            const variantShort = `${voteOption.layer} ${voteOption.faction1} ${subfactionAbbreviations.get(voteOption.subfaction1)} vs ${voteOption.faction2} ${subfactionAbbreviations.get(voteOption.subfaction2)}`;
+            // TODO needs to check the length of *all* options, not just a single one.
+            if (variantLong.length + this.server.voteMessageBaseLength >= this.server.serverBroadcastCharLimit) {
+                option = variantShort
+            } else {
+                option = variantLong
+            }
+            options.push(option);
+        }
+        return options
     }
 
     async parsePoolParameters(splitMessage = [], playerInfo = null) {
@@ -1453,7 +1437,15 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             }
             if (totals[i] === max) {
                 tie = true;
-
+                if (this.mapVoteRunning) {
+                    this.tiedVoteFlags.votePicks.push(this.mapPool[i])
+                    this.tiedVoteFlags.mapPoolVoteTie = true
+                    this.tiedVoteFlags.regularVoteTie = false
+                } else {
+                    this.tiedVoteFlags.votePicks.push(this.voteOptions[i])
+                    this.tiedVoteFlags.regularVoteTie = true
+                    this.tiedVoteFlags.mapPoolVoteTie = false
+                }
             }
             if (totals[i] > max) {
                 tie = false;
@@ -1464,9 +1456,9 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 max = totals[i];
             }
         }
+
         if (this.mapVoteRunning) {
             this.mapVoteRunning = false;
-            // TODO specify action if a tie happens. This is a quick bandaid for the auto set.
             if (!tie) {
                 if (this.options.autoSetMapVoteWinner && this.mapVoteWinner) {
                     const command = assembleSetNextRCONCommandFromLayerObject(this.mapVoteWinner);
@@ -1474,6 +1466,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 }
             }
         }
+
 
         const totalsStr = totals
             .map((value, index) => `${this.voteOptions[index]}: ${value} votes,`)
@@ -1483,13 +1476,19 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             await this.server.rcon.broadcast(
                 `Server: There has been a tie! Total votes: ${this.ballotBox.size}.\n${totalsStr}`
             );
+            this.server.warnAllAdmins(`SquadJS: A tie has been detected in the vote.\nPlease use '!runoff' to initiate a new vote with the tied options.`)
+
         } else {
             let msg;
             msg = `Server: ${winner} has won the vote! Total votes: ${this.ballotBox.size}.\n${totalsStr}`
             if (msg.length >= this.server.serverBroadcastCharLimit) {
                 msg = `Server: ${winner} has won the vote! Total votes: ${this.ballotBox.size}.`
             }
-
+            this.tiedVoteFlags = {
+                votePicks: [],
+                regularVoteTie: false,
+                mapPoolVoteTie: false
+            }
             await this.server.rcon.broadcast(msg);
         }
 
@@ -1523,15 +1522,71 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
     clearVote() {
         this.mapvote = false;
+        this.mapVoteRunning = false;
         this.voteInProgress = false;
         this.ballotBox = new Map();
         this.voteOptions = [];
-        this.mapVoteRunning = false;
+    }
+
+
+
+    async customVoteLog(message, prefix = 1) {
+        const prefix1 = `LayerList`
+        const prefix2 = `Pool`
+        const prefix3 = `AutoSet`
+
+        // TODO change this into an enum, or find another solution entirely.
+        let activePrefix;
+        switch (prefix) {
+            case 1: {
+                activePrefix = prefix1
+                break
+            }
+            case 2: {
+                activePrefix = prefix2
+                break
+            }
+            case 3: {
+                activePrefix = prefix3
+                break
+            }
+            default: activePrefix = prefix1
+        }
+
+        const currentMap = this.server.currentMap
+        const nextMap = this.server.nextMap
+
+        const currentFaction1 = currentMap.factions.split(" ")[0]
+        const currentFaction2 = currentMap.factions.split(" ")[1]
+
+        const nextFaction1 = nextMap.factions.split(" ")[0]
+        const nextFaction2 = nextMap.factions.split(" ")[1]
+
+        const factionMessage = `currentLayer:${currentMap.layer},currentFaction1:${currentFaction1},currentFaction2:${currentFaction2},nextLayer:${nextMap.layer},nextFaction1:${nextFaction1},nextFaction2:${nextFaction2}`
+
+        const date = new Date()
+        const logMessage = `[${date.toISOString()}]_[${activePrefix}]_[${factionMessage}]_[${message}]\r\n`
+        fs.appendFile(this.layerListLogFile, logMessage, (err) => {
+            if (err) {
+                this.verbose(1, `Error occured when logging the layerlist.`)
+                this.verbose(1, err)
+            }
+        });
+    }
+
+    initializeLogFile(filePath) {
+        try {
+            fs.writeFileSync(filePath, '')
+        } catch (e) {
+            this.verbose(1, `Error when initializing log file.`)
+            this.verbose(1, e)
+        }
     }
 
     getRandomArrayElement(array) {
         return array[getRandomInt(0, array.length - 1)];
     }
+
 
 }
 
