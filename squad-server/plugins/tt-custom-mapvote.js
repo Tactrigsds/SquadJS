@@ -4,7 +4,7 @@ import {defaultMapList, factionMap, subfactionAbbreviations} from '../utils/fact
 import axios from "axios";
 import path from "path";
 import Logger from 'core/logger';
-import {getFormattedDateForLog, getLayerListLogPath} from "../utils/utils.js";
+import {getLayerListLogPath} from "../utils/utils.js";
 
 /*
 KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
@@ -411,7 +411,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         // Before attempting to retrieve the recent match history.
         await new Promise((resolve) => setTimeout(resolve, 100));
         this.mapPool = []
-        this.mapPool = await this.generatePoolMain([], null,)
+        this.mapPool = await this.generatePoolMain([], [], null, false)
     }
 
     async unmount() {
@@ -446,7 +446,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         // TODO change to use a different variable, perhaps something like "autosetMap", which the nextlayerset plugin can use
         // To then change the "this.server.nexltayerset" variable once the map set is detected.
         setTimeout(async () => {
-            const tempOptions = await this.parsePoolParameters([], null)
+            const tempOptions = await this.parsePoolParameters([], null, false)
             const tempPool = await this.generatePoolFromParameters(this.safeLayerList, [], tempOptions);
             this.server.warnAllAdmins('SquadJS: Setting random pick from map pool as a fallback.')
             await this.setPoolPickOnRoundStart(tempPool)
@@ -459,7 +459,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     async onDatabaseUpdated() {
         this.mapPool = []
         setTimeout(async () => {
-            this.mapPool = await this.generatePoolMain([], null)
+            this.mapPool = await this.generatePoolMain([], [],null, false)
         }, 10 * 1000)
     }
 
@@ -469,8 +469,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
      * @returns {Promise<void>}
      */
     async setPoolPickOnRoundStart(pool) {
-        console.log(`AutoSet map pool:`)
-        console.log(pool)
+        // console.log(`AutoSet map pool:`)
+        // console.log(pool)
         const mapPick = this.getRandomArrayElement(pool)
         await this.customVoteLog(layerToStringShortCompact(mapPick), 3)
         if (!mapPick) {this.verbose(1, 'Something went wrong when trying to set the next map on round start.'); return}
@@ -483,28 +483,31 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     /**
      * Generates a pool depending on if it's day time or in nighttime, using different layerlists,
      * a more restrictive/"safer" one for nighttime pools.
+     * @param currentPool
      * @param messages
      * @param playerInfo
+     * @param sliceFirstParameter
      * @returns {Promise<*[]>}
      */
-    async generatePoolMain(messages = [], playerInfo = null) {
+    async generatePoolMain(currentPool = [], messages = [], playerInfo = null, sliceFirstParameter = false) {
         const nightTimeStart = this.options.useNightTimeLayerList.startTimeUTC
         const nightTimeEnd = this.options.useNightTimeLayerList.endTimeUTC
         let pool;
         let usedList;
 
-        const parameters = await this.parsePoolParameters(messages, playerInfo)
+        const parameters = await this.parsePoolParameters(messages, playerInfo, sliceFirstParameter)
 
         if (this.options.useNightTimeLayerList.enabled && checkIfTimeInRange(nightTimeStart, nightTimeEnd, new Date())) {
             this.verbose(1, 'Generating pool using nighttime layerlist.')
-            pool = await this.generatePoolFromParameters(this.nightTimeLayerList, [], parameters)
+            pool = await this.generatePoolFromParameters(this.nightTimeLayerList, currentPool, parameters)
             usedList = 'NightTimeList'
         } else {
             this.verbose(1, 'Generating pool using regular layerlist.')
-            pool = await this.generatePoolFromParameters(this.regularLayerList, [], parameters);
+            pool = await this.generatePoolFromParameters(this.regularLayerList, currentPool, parameters);
             usedList = 'DayTimeList'
         }
 
+        this.previousParameters = parameters.validParameters
         await this.customVoteLog(layersArrayToString(pool, layerToStringShortCompact, false), 2)
         const layerString = layersArrayToString(pool, layerToStringShort, true).trimEnd()
         this.verbose(2, `Generated pool: \n${layerString}`)
@@ -795,7 +798,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     await this.server.rcon.warn(
                         playerInfo.steamID,
                         `Pool was regenerated too recently. Please wait ${Math.abs(
-                            Math.round((10000 - timeSinceLastPoolGen) / 1000)
+                            Math.round((this.options.generatePoolFrequencyLimitSeconds * 1000 - timeSinceLastPoolGen) / 1000)
                         )} seconds before re-rolling it again`
                     );
                     return;
@@ -804,7 +807,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 this.poolGenerationTime = currentTime;
 
                 try {
-                    this.mapPool = await this.generatePoolMain(splitMessage, playerInfo);
+                    this.mapPool = await this.generatePoolMain([], splitMessage, playerInfo, true);
                 } catch (err) {
                     await this.server.rcon.warn(playerInfo.steamID, 'Something went wrong when generating pool');
                     this.verbose(1, 'Error occured when sending pool.');
@@ -910,41 +913,45 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             // Keeps specific pool picks if the index of a pick is given as a parameter to the command.
             else if (splitMessage[0] === this.options.rerollCommand) {
                 this.verbose(3, 'Reroll command triggered.');
+                if (this.mapVoteRunning) {
+                    await this.server.rcon.warn(
+                        playerInfo.steamID,
+                        'Cannot generate a new pool while a mapvote is running.'
+                    );
+                    return;
+                }
+
+                let tempParameters;
+                let poolToKeep = []
                 if (!this.previousParameters.length) {
                     await this.server.rcon.warn(
                         playerInfo.steamID,
                         `There were no valid parameters stored from the previous pool generation.\nRunning with default parameters.`
                     );
-                }
+                } else {
+                    const indexesToReroll = []
 
-                const indexesToReroll = []
-
-                for (let i = 1; i < splitMessage.length; i++) {
-                    const regex = (/^[0-9]+/)
-                    if (regex.test(splitMessage[i])) {
-                        if (+splitMessage[i] > 0 && +splitMessage[i] <= this.mapPoolSize && !indexesToReroll.includes(+splitMessage[i])) {
-                            indexesToReroll.push(+splitMessage[i])
+                    for (let i = 1; i < splitMessage.length; i++) {
+                        const regex = (/^[0-9]+/)
+                        if (regex.test(splitMessage[i])) {
+                            if (+splitMessage[i] > 0 && +splitMessage[i] <= this.mapPoolSize && !indexesToReroll.includes(+splitMessage[i])) {
+                                indexesToReroll.push(+splitMessage[i])
+                            }
                         }
                     }
-                }
 
-                const tempParameters = this.previousParameters;
-                tempParameters.unshift(' ');
-
-                // TODO this will have to be changed where the pool reroll is generated *inside* the pool generation function.
-
-                const tempPool = await this.generatePoolMain(tempParameters, playerInfo)
-                const newPool = []
-
-                for (let i = 0; i < this.mapPoolSize; i++) {
-                    if (!indexesToReroll.includes(i + 1)) {
-                        newPool[i] = this.mapPool[i]
-                    } else {
-                        newPool[i] = tempPool[i]
+                    for (let i = 0; i < this.mapPoolSize; i++) {
+                        if (!indexesToReroll.includes(i + 1)) {
+                            poolToKeep[i] = this.mapPool[i]
+                        }
                     }
+
+                    tempParameters = this.previousParameters;
                 }
 
-                this.mapPool = newPool
+
+                // TODO currently the pool with add more of the same maps, if one was used as a parameter. Add handling for this case.
+                this.mapPool = await this.generatePoolMain(poolToKeep, tempParameters, playerInfo)
 
                 await this.sendCurrentPool(playerInfo, `Rerolling map pool with previous parameters:`);
             }
@@ -984,9 +991,14 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
     }
 
+    async rerollPool() {
+
+    }
+
+
     async sendCurrentPool(playerInfo, headerMessage) {
         if (!this.regularLayerList || !this.regularLayerList.length) {
-            this.verbose(1, 'Curated layer list not loaded properly, pool generation not possible.');
+            this.verbose(1, 'Layer list not loaded properly, pool generation not possible.');
             await this.server.rcon.warn(
                 playerInfo.steamID,
                 'LayerList was not loaded properly\nUnable to send pool.'
@@ -1048,11 +1060,15 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         return options
     }
 
-    async parsePoolParameters(splitMessage = [], playerInfo = null) {
+    async parsePoolParameters(splitMessage = [], playerInfo = null, sliceFirstParameter=true) {
         // Convert all parameters to lower case, to make them easier to work with.
-        const messages = splitMessage.map(message => message.toLowerCase().trim());
-        // We cut the first message since that's going to be the command itself.
-        const parameters = messages.slice(1);
+        let parameters = splitMessage.map(message => message.toLowerCase().trim());
+
+        if (sliceFirstParameter) {
+
+            // We cut the first message since that's going to be the command itself.
+            parameters = parameters.slice(1);
+        }
 
         const mapSizes = ['small', 'medium', 'large'];
         const gameModes = ['aas', 'raas', 'invasion', 'tc', 'skirmish'];
