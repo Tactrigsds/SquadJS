@@ -570,7 +570,7 @@ export default class AdminCommands extends DiscordBasePlugin {
 
     let message = `Match data from the last ${mapsToSendCount} rounds: \n\n`
     if (useRandyTime) {
-      message += `This is special for you Randy Newman ;) <3\n\n`
+      message += `This is special for you Randy Newman\n\n`
     }
 
     for (let i = 0; i < matchHistory.length && i < mapsToSendCount; ++i) {
@@ -581,7 +581,8 @@ export default class AdminCommands extends DiscordBasePlugin {
       let postFix;
       if (data.endTime) {
         if (useRandyTime) {
-          endTime = new Date(+data.endTime + (60 * 60 * 8 * 1000))
+          const hongKongHourOffset = 8
+          endTime = new Date(+data.endTime + (3600 * 1000 * hongKongHourOffset))
           if (endTime.getUTCHours() < 12) {
             postFix = 'AM'
             endHours = endTime.getUTCHours()
@@ -593,7 +594,8 @@ export default class AdminCommands extends DiscordBasePlugin {
           endMinutes = endTime.getUTCMinutes().toString().padStart(2, '0')
 
         } else {
-          endTime = new Date(+data.endTime - (60 * 60 * 4 * 1000))
+          const ESTHourOffset = -4
+          endTime = new Date(+data.endTime + (3600 * 1000 * ESTHourOffset))
           endHours = endTime?.getUTCHours()?.toString().padStart(2, '0')
           endMinutes = endTime?.getUTCMinutes()?.toString().padStart(2, '0')
         }
