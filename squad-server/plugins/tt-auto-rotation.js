@@ -41,18 +41,32 @@ export default class TTAutoRotation extends BasePlugin {
         super(server, options, connectors);
         this.onNewGame = this.onNewGame.bind(this)
         this.loadRotation = this.loadRotation.bind(this)
+        this.removeFogOfWar = this.removeFogOfWar.bind(this)
         this.setNextLayerInRotation = this.setNextLayerInRotation.bind(this)
         this.rotation = null;
+        /*
+         Matches the format of a map set, with optional subfactions.
+         Example - Yehorivka_RAAS_V1 USA RGF
+         AND - Yehorivka_RAAS_V1 USA+Armored RGF+Armored
+         */
+
         this.regex = /^\w+_\w+_\w+\s\w+(?:\+\w+)?\s\w+(?:\+\w+)?$/;
     }
 
     async mount() {
         this.server.on(this.server.eventsEnum.databaseUpdated, this.onNewGame)
-        this.rotation = await this.loadRotation()
         this.autoSetLayerOnRoundStartInitialState = this.server.autoSetLayerOnRoundStart
-        this.server.autoSetLayerOnRoundStart = false
+        this.server.autoRotationEnabled = this.options.rotationEnabled
+        this.server.autoRemovefogOfWar = this.options.autoRemovefogOfWar
+        // If the autorotation is enabled, we want to disable tt-custom-mapvotes autoset, to avoid double sets.
+        this.server.autoSetLayerOnRoundStart = !this.options.autoRotationEnabled
+        if (this.server.autoRotationEnabled) {
+            this.rotation = await this.loadRotation()
+        } else {
+            this.rotation = null
+        }
+
         await new Promise(resolve => setTimeout(resolve, 500))
-        await this.onNewGame()
     }
 
     async unmount() {
@@ -63,16 +77,20 @@ export default class TTAutoRotation extends BasePlugin {
     async onNewGame() {
         await new Promise(resolve => setTimeout(resolve, 2000))
 
-        if (this.options.autoRemovefogOfWar) {
+        if (this.server.autoRemovefogOfWar) {
             setTimeout(async () => {
-                await this.server.rcon.setFogOfWar(0)
-                this.verbose(1, `Turning off fog...`)
-                this.server.warnAllAdmins(`SquadJS: Turning off fog...`)
+                await this.removeFogOfWar()
               }, this.options.autoFogOfWarDelay)
         }
-        if (this.options.rotationEnabled) {
+        if (this.server.rotationEnabled) {
             await this.setNextLayerInRotation()
         }
+    }
+
+    async removeFogOfWar() {
+        await this.server.rcon.setFogOfWar(0)
+        this.verbose(1, `Turning off fog...`)
+        this.server.warnAllAdmins(`SquadJS: Turning off fog...`)
     }
 
     async setNextLayerInRotation() {
@@ -108,20 +126,15 @@ export default class TTAutoRotation extends BasePlugin {
                 await new Promise(resolve => setTimeout(resolve, 5000))
                 const nextMap = await this.server.rcon.getNextMap()
                 if (!layer.includes(`${nextMap.layer} ${nextMap.factions}`)) {
-                    this.verbose(1, 'Invalid layer detected...')
+                    this.verbose(1, `Invalid layer detected...${layer}`)
                     await this.removeInvalidLayer(layer)
                     this.setNextLayerInRotation()
                 } else {
                     this.server.nextLayerSet = true
-                    // await new Promise(resolve => setTimeout(resolve, 30 * 1000))
-                    await this.server.warnAllAdmins(`SquadJS: TT Auto rotation plugin running, setting next layer in rotation: ${nextRotationPick}`)
+                    await this.server.warnAllAdmins(`SquadJS: Auto rotation plugin running, setting next layer in rotation: ${nextRotationPick}`)
                     break
                 }
             }
-        }
-
-        if (!nextRotationPick) {
-            return
         }
     }
 
