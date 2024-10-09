@@ -47,7 +47,7 @@ export default class PublicCommands extends BasePlugin {
 
   async showNextMapCommand(info) {
     let message;
-    let nextMap = {};
+    const nextMap = {};
     const warns = []
 
     if (!this.server.nextFactions || !this.server.nextLayerAlt) {
@@ -71,8 +71,6 @@ export default class PublicCommands extends BasePlugin {
       nextMap.layer = this.server.nextLayerAlt
       nextMap.factions = this.server.nextFactions
     }
-
-
 
 
     if (nextMap.layer && nextMap.factions) {
@@ -100,7 +98,8 @@ export default class PublicCommands extends BasePlugin {
       message = `Next layer: ${nextMap.layer} \n\n`
       message += `Next factions: \n`
       message += `${faction1}+${subfaction1} vs ${faction2}+${subfaction2}\n\n`
-      const team = (nextRoundTeamID === 1) ? `${nextRoundTeamID} - ${faction1}+${subfaction1}` : `${nextRoundTeamID} - ${faction2}+${subfaction2}`
+      message += `${nextRoundTeamID} - `
+      const team = (nextRoundTeamID === 1) ? ` ${faction1}+${subfaction1}` : `${faction2}+${subfaction2}`
       message += `You will be Team ${team} next round.`
 
       if (this.server.playerIsAdmin(info.steamID)) {
