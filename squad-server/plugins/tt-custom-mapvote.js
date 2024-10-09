@@ -6,11 +6,6 @@ import path from "path";
 import Logger from 'core/logger';
 import {getLayerListLogPath} from "../utils/utils.js";
 
-/*
-KNOWN ISSUES, FEATURES TO IMPLEMENT ETC.
-// TODO If there is a tie in the map vote, then currently the first pick is automatically set to the next map.
- */
-
 
 export default class TTCustomMapVote extends DiscordBasePlugin {
     static get description() {
@@ -777,7 +772,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         const message = info.message.toLowerCase();
 
         /*
-        Chat commands, adminName only.
+        Chat commands, admin only.
          */
         if (!this.options.ignoreChats.includes(info.chat)) {
             if (this.options.generatePoolCommands.includes(splitMessage[0])) {
@@ -813,7 +808,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                     this.verbose(1, 'Error occured when sending pool.');
                     this.verbose(1, err);
                 }
-                this.verbose(2, 'Map pool generated, triggered by adminName: ' + playerInfo.name);
+                this.verbose(2, 'Map pool generated, triggered by admin: ' + playerInfo.name);
                 const message = `Newly generated map pool, triggered by: ${playerInfo.name}`;
                 this.sendCurrentPool(playerInfo, message);
                 this.adminTriggeringPoolGen = { admin: playerInfo.name, steamID: playerInfo.steamID}
