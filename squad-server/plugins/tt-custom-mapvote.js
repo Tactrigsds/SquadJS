@@ -4,7 +4,7 @@ import {defaultMapList, factionMap, subfactionAbbreviations} from '../utils/fact
 import axios from "axios";
 import path from "path";
 import Logger from 'core/logger';
-import {getLayerListLogPath} from "../utils/utils.js";
+import {delay, getLayerListLogPath} from "../utils/utils.js";
 
 
 export default class TTCustomMapVote extends DiscordBasePlugin {
@@ -810,7 +810,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 }
                 this.verbose(2, 'Map pool generated, triggered by admin: ' + playerInfo.name);
                 const message = `Newly generated map pool, triggered by: ${playerInfo.name}`;
-                this.sendCurrentPool(playerInfo, message);
+                await this.sendCurrentPool(playerInfo, message);
                 this.adminTriggeringPoolGen = { admin: playerInfo.name, steamID: playerInfo.steamID}
             }
 
@@ -826,7 +826,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 const options = this.processPoolForMapVote(this.mapPool)
                 this.mapVoteRunning = true;
                 this.voteOptions = options;
-                this.callVote(this.voteOptions);
+                await this.callVote(this.voteOptions);
             }
 
             else if (message === this.options.setNextFromWinnerCommand) {
@@ -1040,6 +1040,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
     processPoolForMapVote(pool) {
         const options = [];
+
         for (const voteOption of pool) {
             let option
             const variantLong = `${voteOption.layer} ${voteOption.faction1} ${voteOption.subfaction1} vs ${voteOption.faction2} ${voteOption.subfaction2}`;
@@ -1059,9 +1060,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         // Convert all parameters to lower case, to make them easier to work with.
         let parameters = splitMessage.map(message => message.toLowerCase().trim());
 
+        // We may need to cut the first element if it includes the command itself.
         if (sliceFirstParameter) {
-
-            // We cut the first message since that's going to be the command itself.
             parameters = parameters.slice(1);
         }
 
@@ -1314,6 +1314,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
         // Handle defaults and attempt to get maps from the filters that were specified if not enough maps were supplied.
         for (const slot of poolSlots) {
+
             if (slot.mapSize === MAP_SIZES_ENUM.MEDIUM ||
                 slot.mapSize === MAP_SIZES_ENUM.SMALL) {
 
@@ -1390,7 +1391,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             existingPool = []
         }
 
-
         // If there are not enough available layers or too many duplicates in recently played layers, return an empty pool
         if (layerList.length + newPool.length < picksToGenerate) {
             return newPool;
@@ -1449,13 +1449,15 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             if (totals[i] === max) {
                 tie = true;
                 if (this.mapVoteRunning) {
+                    // Insert the pool elements if the vote was using the mappool
                     this.tiedVoteFlags.votePicks.push(this.mapPool[i])
                     this.tiedVoteFlags.mapPoolVoteTie = true
                     this.tiedVoteFlags.regularVoteTie = false
                 } else {
+                    // If it was a manual vote, i.e !vote
                     this.tiedVoteFlags.votePicks.push(this.voteOptions[i])
-                    this.tiedVoteFlags.regularVoteTie = true
                     this.tiedVoteFlags.mapPoolVoteTie = false
+                    this.tiedVoteFlags.regularVoteTie = true
                 }
             }
             if (totals[i] > max) {
@@ -1483,11 +1485,15 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             .map((value, index) => `${this.voteOptions[index]}: ${value} votes,`)
             .join(' ')
             .slice(0, -1);
+
         if (tie) {
             await this.server.rcon.broadcast(
                 `Server: There has been a tie! Total votes: ${this.ballotBox.size}.\n${totalsStr}`
             );
-            this.server.warnAllAdmins(`SquadJS: A tie has been detected in the vote.\nPlease use '!runoff' to initiate a new vote with the tied options.`)
+            for (let i = 0; i < 3; i++) {
+                await this.server.warnAllAdmins(`SquadJS: A tie has been detected in the vote.\nPlease use '!runoff' to initiate a new vote with the tied options.`)
+                await delay(this.server.warnMessagePersistenceTimeMilliSeconds)
+            }
 
         } else {
             let msg;
@@ -1512,7 +1518,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
     async callVote(options) {
         this.voteInProgress = true;
-        const broadcastStr = options.map((option, index) => `${index + 1}: ${option}\n`).join(' ');
+        const broadcastStr = options.map((option, index) => `${index + 1}: ${option}\n`).join('');
         this.verbose(3, 'Server broadcast length: ' + broadcastStr.length);
         const message = {
             // content: `\`\`\`fix\n${this.info.player.name} has started a vote: \n${broadcastStr}\n\`\`\``
