@@ -30,18 +30,20 @@ export default class AltChecker extends DiscordBasePlugin {
                 default: '',
                 example: '667741905228136459'
             },
-            highPriorityDiscordChannelsIDs: {
+            logHighPriorityUsers: {
                 required: false,
-                description: `The ids of channels to log high priority joins to.`,
-                default: [],
-                example: ["123467123461123"]
-            },
-            highPriorityUsers: {
-                required: false,
-                description: `An array of objects describing names and IPs of high priority users, that will be logged to the high priority channels when they are detected.`,
-                example: [
-                    { name: "Akbarr", IP: "" }
-                ]
+                description: "Whether to log join events of alts of certain users that are deemed high priority. " +
+                    "Useful for repeat offenders like ban evaders etc.",
+                default: {
+                    enabled: false,
+                    logChannels: [""],
+                    users: {}
+                },
+                example: {
+                    enabled: true,
+                    logChannels: ["123467123461123"],
+                    users: { name: "testUser1234", ip: "192.168.0.1"}
+                }
             },
             kickIfAltDetected: {
                 required: false,
@@ -71,7 +73,8 @@ export default class AltChecker extends DiscordBasePlugin {
         this.onPlayerConnected = this.onPlayerConnected.bind(this);
         this.getPlayerByName = this.getPlayerByName.bind(this);
         this.getPlayersByUsernameDatabase = this.getPlayersByUsernameDatabase.bind(this);
-        this.commandChannel = null;
+        this.highPriorityChannels;
+        this.highPriorityUsers;
         this.DBLogPlugin;
 
         this.warn = (steamid, msg) => { this.server.rcon.warn(steamid, msg); };
@@ -84,13 +87,23 @@ export default class AltChecker extends DiscordBasePlugin {
         this.options.discordClient.on('messageCreate', this.onDiscordMessage);
         this.server.on('CHAT_MESSAGE', this.onChatMessage);
         this.server.on('PLAYER_CONNECTED', this.onPlayerConnected);
+        // Stores discord.js channel objects that can be utilized to send messages to.
         this.highPriorityChannels = []
-        for (const channelID of this.options.highPriorityDiscordChannelsIDs) {
-            try {
-                const channel = await this.options.discordClient.channels.fetch(channelID)
-                this.highPriorityChannels.push(channel)
-            } catch {
-                this.verbose(1, `Unable to fetch channel with ID: ${channelID}`)
+        this.highPriorityUsers = []
+        if (this.options.logHighPriorityUsers.enabled) {
+            this.verbose(1, `Logging of high prority users enabled, initiating channels...`)
+            for (const channelID of this.options.logHighPriorityUsers.logChannels) {
+                try {
+                    if (!channelID) continue;
+                    const channel = await this.options.discordClient.channels.fetch(channelID)
+                    this.highPriorityChannels.push(channel)
+                } catch {
+                    this.verbose(1, `Unable to fetch channel with ID: ${channelID}`)
+                }
+            }
+
+            for (const user of this.options.logHighPriorityUsers.users) {
+                this.highPriorityUsers.push(user)
             }
         }
     }
@@ -167,9 +180,12 @@ export default class AltChecker extends DiscordBasePlugin {
 
         const res = await this.doAltCheck({ lastIP: info.ip })
 
+
+        // TODO add handling if any connections "highpriority" users are detected, not just alts.
+
         if (!res) return;
 
-        if (res.length <= 1 || res == RETURN_TYPE.PLAYER_NOT_FOUND) return;
+        if (res.length <= 1 || res === RETURN_TYPE.PLAYER_NOT_FOUND) return;
 
         const embed = this.generateDiscordEmbed(res);
         embed.title = `Alts found for connected player: ${info.player.name}`
@@ -181,7 +197,7 @@ export default class AltChecker extends DiscordBasePlugin {
         if (this.options.kickIfAltDetected) {
             shouldKick = true;
 
-            const onlineAlt = this.server.players.find(p => p.eosID != info.player.eosID && res.find(dbP => dbP.eosID == p.eosID))
+            const onlineAlt = this.server.players.find(p => p.eosID !== info.player.eosID && res.find(dbP => dbP.eosID === p.eosID))
             if (this.options.onlyKickOnlineAlt && !onlineAlt)
                 shouldKick = false;
 
@@ -193,16 +209,25 @@ export default class AltChecker extends DiscordBasePlugin {
             name: 'Player Kicked?',
             value: shouldKick ? 'YES' : 'NO'
         })
-        // console.log(info.ip)
         await this.sendDiscordMessage({ embed: embed });
-        // if (info.ip === '74.132.67.131') {
-        if (this.commandChannel) {
-            if (info.ip === this.options.akbarrIP) {
-                this.verbose(1, `Akbarr alt detected, sending to command channel.`)
-                this.commandChannel.send(`Akbarr alt detected`)
-                this.commandChannel.send( {embed: embed} )
+        if (this.options.logHighPriorityUsers.enabled) {
+            // for (const users of this.options)
+            // TODO add handling if any connections "highpriority" users are detected, not just alts.
+            for (const highPrioUser of this.highPriorityUsers) {
+                if (info.ip === highPrioUser.ip) {
+                    this.highPriorityChannels.forEach(channel => {
+                        channel.send({embed: embed})
+                    })
+                }
             }
         }
+
+        //     if (info.ip === this.options.akbarrIP) {
+        //         this.verbose(1, `Akbarr alt detected, sending to command channel.`)
+        //         this.commandChannel.send(`Akbarr alt detected`)
+        //         this.commandChannel.send( {embed: embed} )
+        //     }
+        // }
     }
 
     generateDiscordEmbed(res) {
@@ -295,7 +320,7 @@ export default class AltChecker extends DiscordBasePlugin {
             }
         })
 
-        if (!res || res.length == 0) return RETURN_TYPE.PLAYER_NOT_FOUND;
+        if (!res || res.length === 0) return RETURN_TYPE.PLAYER_NOT_FOUND;
 
         return res.map(r => r.dataValues);
     }

@@ -388,7 +388,7 @@ export default class SquadServer extends EventEmitter {
   }
 
   /**
-   * Get ids of every adminName that has the permission.
+   * Get ids of every admin that has the permission.
    * @overload
    * @arg {string} perm - permission to filter with.
    * @arg {('steamID'|'eosID'|'anyID')} type - return IDs of selected
@@ -406,7 +406,7 @@ export default class SquadServer extends EventEmitter {
    *   only admins that are online.
    * @returns {Player[]}
    */ /**
-   * Get steamIDs of every adminName that has the permission. This overload
+   * Get steamIDs of every admin that has the permission. This overload
    * exists for compatibility with pre-EOS API and is equivalent to
    * <code>getAdminsWithPermisson(perm, type='steamID')</code>.
    * @overload
@@ -422,7 +422,7 @@ export default class SquadServer extends EventEmitter {
     let filter = (ID) => ID.match(steamRgx) !== null; // true if steamID
     switch (type) {
       // 1) if adminName is registered with steamID and is online then swap to eosID
-      // 2) deduplicate output in case same adminName was in 2 lists with different IDs
+      // 2) deduplicate output in case same admin was in 2 lists with different IDs
       case 'anyID':
         return [
           ...new Set(
