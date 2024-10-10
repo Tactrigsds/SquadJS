@@ -219,7 +219,30 @@ export default class DBLog extends BasePlugin {
         ]
       }
     );
-
+    this.createModel(
+      'PlayerIP',
+      {
+        id: {
+          type: DataTypes.INTEGER,
+          primaryKey: true,
+          autoIncrement: true
+        },
+        steamID: {
+          type: DataTypes.STRING,
+          allowNull: false,
+            unique: 'steamID_IP_unique'
+        },
+        IP: {
+          type: DataTypes.STRING,
+          allowNull: false,
+            unique: 'steamID_IP_unique'
+        }
+      },
+      {
+        charset: 'utf8mb4',
+        collate: 'utf8mb4_unicode_ci',
+      }
+    );
     this.createModel(
       'Wound',
       {
@@ -373,9 +396,15 @@ export default class DBLog extends BasePlugin {
       }
     );
 
+    this.models.Player.hasMany(this.models.PlayerIP, {
+        sourceKey: 'steamID',
+        foreignKey: { name: 'steamID', allowNull: false},
+        onDelete: 'CASCADE'
+    })
+
     this.models.Server.hasMany(this.models.TickRate, {
-      foreignKey: { name: 'server', allowNull: false },
-      onDelete: 'CASCADE'
+        foreignKey: { name: 'server', allowNull: false },
+        onDelete: 'CASCADE'
     });
 
     this.models.Server.hasMany(this.models.PlayerCount, {
@@ -479,6 +508,7 @@ export default class DBLog extends BasePlugin {
     this.onPlayerRevived = this.onPlayerRevived.bind(this);
     this.roundEnded = this.roundEnded.bind(this);
     this.migrateSteamUsersIntoPlayers = this.migrateSteamUsersIntoPlayers.bind(this);
+    this.migrateIPsfromPlayersToPlayerIPsTable = this.migrateIPsfromPlayersToPlayerIPsTable.bind(this)
     this.dropAllForeignKeys = this.dropAllForeignKeys.bind(this);
   }
 
@@ -498,10 +528,12 @@ export default class DBLog extends BasePlugin {
     await this.models.Wound.sync();
     await this.models.Death.sync();
     await this.models.Revive.sync();
+    await this.models.PlayerIP.sync();
   }
 
   async mount() {
     await this.migrateSteamUsersIntoPlayers();
+    await this.migrateIPsfromPlayersToPlayerIPsTable();
 
     await this.models.Server.upsert({
       id: this.options.overrideServerID || this.server.id,
@@ -726,6 +758,21 @@ export default class DBLog extends BasePlugin {
         conflictFields: ['steamID']
       }
     );
+    // await this.models.PlayerIP.upsert(
+    //     {
+    //         steamID: info.player.steamID,
+    //         IP: info.ip
+    //     },
+    //     {
+    //         conflictFields: ['steamID', 'IP']
+    //     }
+    // )
+    await this.models.PlayerIP.create(
+        {
+            steamID: info.player.steamID,
+            IP: info.ip
+        }
+    )
   }
 
   async roundEnded(info) {
@@ -739,12 +786,12 @@ export default class DBLog extends BasePlugin {
       {
         winnerTeam: info.winner?.faction,
         winnerTeamID: +info.winner?.team,
+        team1Short: team1,
+        team2Short: team2,
         team1: +info.winner?.team === 1 ? info.winner.faction : info.loser?.faction,
         team2: +info.winner?.team === 2 ? info.winner.faction : info.loser?.faction,
         subFactionTeam1: +info.winner?.team === 1 ? info.winner.subfaction : info.loser?.subfaction,
         subFactionTeam2: +info.winner?.team === 2 ? info.winner.subfaction : info.loser?.subfaction,
-        team1Short: team1,
-        team2Short: team2,
         subFactionShortTeam1: subfaction1,
         subFactionShortTeam2: subfaction2,
         tickets: +(+info.winner?.tickets - +info.loser?.tickets),
@@ -777,6 +824,30 @@ export default class DBLog extends BasePlugin {
       this.verbose(1, `Error during Migration from SteamUsers to Players: ${error}`);
     }
   }
+
+  async migrateIPsfromPlayersToPlayerIPsTable() {
+      try {
+          const playersCount = await this.models.Player.count()
+          const playerIPsCount = await this.models.PlayerIP.count()
+          if (playerIPsCount > playersCount) {
+              this.verbose(2, `Skipping migration of IPs due to previous succesful migration.`)
+              return
+          }
+
+        let players = await this.models.Player.findAll()
+        players = players.map((u) => { return { steamID: u.dataValues.steamID, IP: u.dataValues.lastIP }})
+
+        for (const player of players) {
+            try {
+                await this.models.PlayerIP.upsert(player)
+            } catch (e) {}
+        }
+        this.verbose(1, `Migration from Player to PlayerIPs successful.`)
+      } catch(err) {
+          this.verbose(1, `Error occured when migrating player's IPs to PlayerIP table.`)
+          console.log(err)
+      }
+    }
 
   async dropAllForeignKeys() {
     this.verbose(
