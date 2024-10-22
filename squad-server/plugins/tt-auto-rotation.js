@@ -82,7 +82,7 @@ export default class TTAutoRotation extends BasePlugin {
                 await this.removeFogOfWar()
               }, this.options.autoFogOfWarDelay)
         }
-        if (this.server.rotationEnabled) {
+        if (this.server.autoRotationEnabled) {
             await this.setNextLayerInRotation()
         }
     }
