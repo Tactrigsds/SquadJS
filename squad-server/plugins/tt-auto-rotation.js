@@ -33,6 +33,15 @@ export default class TTAutoRotation extends BasePlugin {
                 required: false,
                 description: "The delay before fog of war gets disabled.",
                 default: 15 * 1000
+            },
+            autoRemoveFogOfWarCommand: {
+                required: false,
+                description: "Commands that can be used to enable the auto fog of war, it's status etc.",
+                default: ['!autofog']
+            },
+            squadJSConfigFilePath: {
+                required: false,
+                description: "The path to the SquadJS config file.",
             }
         };
     }
@@ -40,30 +49,46 @@ export default class TTAutoRotation extends BasePlugin {
     constructor(server, options, connectors) {
         super(server, options, connectors);
         this.onNewGame = this.onNewGame.bind(this)
+        this.onChatMessage = this.onChatMessage.bind(this)
         this.loadRotation = this.loadRotation.bind(this)
         this.removeFogOfWar = this.removeFogOfWar.bind(this)
         this.setNextLayerInRotation = this.setNextLayerInRotation.bind(this)
         this.rotation = null;
+        this.configFilePath = fs.realpathSync(this.options.squadJSConfigFilePath)
+        this.testOutputPath = './test-output.json'
+
         /*
          Matches the format of a map set, with optional subfactions.
          Example - Yehorivka_RAAS_V1 USA RGF
          AND - Yehorivka_RAAS_V1 USA+Armored RGF+Armored
          */
-
         this.regex = /^\w+_\w+_\w+\s\w+(?:\+\w+)?\s\w+(?:\+\w+)?$/;
     }
 
     async mount() {
         this.server.on(this.server.eventsEnum.databaseUpdated, this.onNewGame)
+        this.server.on(this.server.eventsEnum.chatMessage, this.onChatMessage)
+
         this.autoSetLayerOnRoundStartInitialState = this.server.autoSetLayerOnRoundStart
         this.server.autoRotationEnabled = this.options.rotationEnabled
         this.server.autoRemovefogOfWar = this.options.autoRemovefogOfWar
+
         // If the autorotation is enabled, we want to disable tt-custom-mapvotes autoset, to avoid double sets.
         this.server.autoSetLayerOnRoundStart = !this.options.autoRotationEnabled
         if (this.server.autoRotationEnabled) {
             this.rotation = await this.loadRotation()
         } else {
             this.rotation = null
+        }
+        try {
+            this.configData = await this.loadConfigFile()
+            /* Stores a reference/pointer to the autorotation parameters in the config file,
+             NOT a copy, so changes done to this variable will be made to the config as well.
+            */
+            this.autoRotationPluginConfig = this.configData.plugins.find(p => p.plugin === 'TTAutoRotation')
+        } catch (e) {
+            this.verbose(1, `Error occured when loading config data to memory. Error: `)
+            console.error(e)
         }
 
         await new Promise(resolve => setTimeout(resolve, 500))
@@ -86,6 +111,98 @@ export default class TTAutoRotation extends BasePlugin {
             await this.setNextLayerInRotation()
         }
     }
+
+    async onChatMessage(info) {
+        const pMessages = info.message.toLowerCase().split(" ")
+
+        if (this.options.autoRemoveFogOfWarCommand.includes(pMessages[0])) {
+            if (pMessages[1] === 'toggle') {
+                await this.fogOfWarToggle(info)
+            }
+            else if(pMessages[1] === 'status') {
+                await this.sendFogOfWarStatus(info)
+            }
+            else if (pMessages[1] === 'save') {
+                await this.saveFogOfWarState(info)
+            }
+        }
+    }
+
+
+    async sendFogOfWarStatus(info) {
+        const state = this.server.autoRemovefogOfWar ? 'Enabled' : 'Disabled'
+        if (info) {
+            await this.server.rcon.warn(info.steamID, `Auto fog is currently ${state}.`)
+        }
+    }
+
+    async fogOfWarToggle(info) {
+        this.server.autoRemovefogOfWar = !this.server.autoRemovefogOfWar
+        const state = this.server.autoRemovefogOfWar ? 'on' : 'off'
+        this.verbose(1, `Toggled auto fog of war ${state}`)
+        if (info) {
+            if (this.server.autoRemovefogOfWar) {
+                await this.server.rcon.warn(info.steamID, `Auto fog has been toggled on.\nFog will now be automatically removed at the start of a game.`)
+            } else {
+                await this.server.rcon.warn(info.steamID, `Auto fog has been toggled off.\n`)
+            }
+        }
+    }
+
+    async saveFogOfWarState(info) {
+        if (this.autoRotationPluginConfig) {
+            this.autoRotationPluginConfig.autoRemovefogOfWar = this.server.autoRemovefogOfWar
+            try {
+                await this.saveConfigFile(this.configData, this.configFilePath)
+                await this.server.rcon.warn(info.steamID, `Succesfully saved autofog state to config file. Note that this `)
+            } catch (e) {
+                this.verbose(`Unable to save config file. Error: `)
+                console.log(e)
+            }
+
+        } else {
+            await this.server.rcon.warn(info.steamID, `Config data was improperly loaded by the plugin. Not able to save updated parameters.`)
+        }
+    }
+
+    saveConfigFile(data, configFilePath) {
+        const tempFilePath = './config.temp.json'
+        if (!configFilePath) {
+            throw Error('Unable to save config, the path stored is either invalid or nonexistent.')
+        }
+        let jsonString
+        try {
+            jsonString = JSON.stringify(data, null, 2)
+            this.verbose(3, `Succesfully parsed config data back into JSON`)
+        } catch (e) {
+            this.verbose(1, `Unable to save changed config file, error when parsing JSON data into a string.`)
+            console.log(e)
+            return
+        }
+        try {
+            fs.writeFileSync(tempFilePath, jsonString, 'utf-8')
+            fs.renameSync(tempFilePath, configFilePath);
+            this.verbose(1, `Config file succesfully updated.`)
+        } catch (err) {
+            this.verbose(1, `Failed to save config safely`)
+            if (fs.existsSync(tempFilePath)) {
+                fs.unlinkSync(tempFilePath);
+            }
+        }
+    }
+
+    async loadConfigFile() {
+        if (!this.configFilePath) {
+            throw Error('Unable to load config, the path stored is either invalid or nonexistent.')
+        }
+        const rawData = fs.readFileSync(this.configFilePath, "utf-8")
+        return JSON.parse(rawData)
+    }
+
+    async loadRotationCommand() {
+
+    }
+
 
     async removeFogOfWar() {
         await this.server.rcon.setFogOfWar(0)
@@ -160,7 +277,6 @@ export default class TTAutoRotation extends BasePlugin {
         const viableRotation = []
 
         const regex = /^\w+_\w+_\w+\s\w+(?:\+\w+)?\s\w+(?:\+\w+)?$/;
-
 
         for (const layer of tempRotation) {
             if (regex.test(layer)) {
