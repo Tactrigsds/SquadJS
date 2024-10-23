@@ -115,6 +115,11 @@ export default class TTAutoRotation extends BasePlugin {
         const pMessages = info.message.toLowerCase().split(" ")
         if (info.chat !== 'ChatAdmin') return
 
+        // const commands = [
+        //     {inGameCommand: `toggle`, action: this.fogOfWarToggle, help: ``},
+        //     {inGameCommand: `status`, action: this.fogOfWarToggle, help: ``},
+        // ]
+
         if (this.options.autoRemoveFogOfWarCommand.includes(pMessages[0])) {
             if (pMessages[1] === 'toggle') {
                 await this.fogOfWarToggle(info)
@@ -127,21 +132,57 @@ export default class TTAutoRotation extends BasePlugin {
             }
         }
         else if (this.options.rotationCommand.includes(pMessages[0])) {
-            if (pMessages[1] === `toggle`) {
-                await this.toggleAutoRotation(info)
+            switch (pMessages[1]) {
+                case `toggle`: {
+                    await this.toggleAutoRotation(info)
+                    break;
+                }
+                case `status`: {
+                    await this.sendAutoRotationStatus(info)
+                    break
+                }
+                case `save`: {
+                    await this.saveAutoRotationState(info)
+                    break
+                }
+                case `reload`: {
+                    await this.reloadRotationCommand(info)
+                    break
+                }
+                default: break
             }
-            else if (pMessages[1] === `status`) {
-                await this.sendAutoRotationStatus(info)
-            }
-            else if (pMessages[1] === `save`) {
-                await this.saveAutoRotationState(info)
-            }
-            // else if (pMessages[1] === `load`) {
-            //
-            // }
         }
     }
 
+    async reloadRotationCommand(info) {
+        this.verbose(1, `Rotation reload called by admin: ${info.name}`)
+        try {
+            const rotation = await this.loadRotation()
+            if (rotation && rotation.length) {
+                this.verbose(1, `Succesfully reloaded rotation.`)
+                await this.server.rcon.warn(info.steamID, `Succesfully reloaded rotation. \nRotation length: ${rotation.length}`)
+            }
+            else {
+                this.verbose(1, `Something went wrong when loading rotation.`)
+                await this.server.rcon.warn(info.steamID, `Something went wrong when loading rotation.`)
+            }
+        } catch (e) {
+            this.verbose(1, `Something went wrong when reloading rotation from command. Error:`)
+            console.log(e)
+            await this.server.rcon.warn(1, `SquadJS was unable to reload rotation.`)
+        }
+    }
+
+
+    /**
+     *
+     * @param info
+     * @param {Array<string>} rotation
+     * @returns {Promise<void>}
+     */
+    async sendRotationToAdmin(info, rotation) {
+
+    }
 
     async sendAutoRotationStatus(info) {
         const state = this.server.autoRotationEnabled ? 'Enabled' : 'Disabled'
@@ -190,7 +231,7 @@ export default class TTAutoRotation extends BasePlugin {
             this.autoRotationPluginConfig.rotationEnabled = this.server.autoRotationEnabled
             try {
                 await this.saveConfigFile(this.configData, this.configFilePath)
-                await this.server.rcon.warn(info.steamID, `Succesfully saved autorotation state to config file. Note that this makes this setting should SquadJS get restarted.`)
+                await this.server.rcon.warn(info.steamID, `Succesfully saved autorotation state to config file. Note that this saves the current state permanent, and will persist should SquadJS get restarted.`)
             } catch (e) {
                 this.verbose(`Unable to save config file. Error: `)
                 console.log(e)
@@ -217,11 +258,6 @@ export default class TTAutoRotation extends BasePlugin {
         }
     }
 
-
-
-    async loadRotationCommand() {
-
-    }
 
 
     async removeFogOfWar() {
