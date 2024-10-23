@@ -77,13 +77,10 @@ export default class TTAutoRotation extends BasePlugin {
 
         // If the autorotation is enabled, we want to disable tt-custom-mapvotes autoset, to avoid double sets.
         this.server.autoSetLayerOnRoundStart = !this.options.autoRotationEnabled
-        if (this.server.autoRotationEnabled) {
-            this.rotation = await this.loadRotation()
-        } else {
-            this.rotation = null
-        }
+        this.rotation = await this.loadRotation()
+
         try {
-            this.configData = await this.loadConfigFile()
+            this.configData = await this.loadConfigFile(this.configFilePath)
             /* Stores a reference/pointer to the autorotation parameters in the config file,
              NOT a copy, so changes done to this variable will be made to the config as well.
             */
@@ -279,16 +276,24 @@ export default class TTAutoRotation extends BasePlugin {
     }
 
     async loadRotation() {
-        if (this.options.rotationEnabled) {
-            if (!this.options.rotationPath || !this.options.rotationPath.length) {
-                // TODO create a custom error for this.
-                throw new Error('Need to have a valid file path if a rotation is enabled.')
-            }
+        if (!this.options.rotationPath || !this.options.rotationPath.length) {
+            // TODO create a custom error for this.
+            throw new InvalidPathError('Need to have a valid file path if a rotation is enabled.')
         }
         let data;
+        
         try {
-            data = fs.readFileSync(this.options.rotationPath, 'utf-8');
-        } catch (e) {
+            // path.realpathSync(this.options.rotationPath)
+            const rotationPath = fs.realpathSync(this.options.rotationPath)
+            data = fs.readFileSync(rotationPath, 'utf-8');
+        }
+        catch (e) {
+            if (e.code === `ENOENT`) {
+                this.verbose(1, `Error, the specified path to the rotation doesen't exist. Path: ${this.options.rotationPath}`)
+            } else {
+                this.verbose(1, `Unable to load rotation.`)
+                console.log(e)
+            }
             return []
         }
         // TODO fix regex so it also accepts no faction specified while another gets a speified subfaction
@@ -360,15 +365,27 @@ export default class TTAutoRotation extends BasePlugin {
         }
     }
 
-    async loadConfigFile() {
-        if (!this.configFilePath) {
-            throw Error('Unable to load config, the path stored is either invalid or nonexistent.')
+    async loadConfigFile(filePath) {
+        if (!filePath || !filePath?.length) {
+            throw Error('Unable to load config, the path to the config file is either invalid or nonexistent.')
         }
-        const rawData = fs.readFileSync(this.configFilePath, "utf-8")
+        const rawData = fs.readFileSync(filePath, "utf-8")
         return JSON.parse(rawData)
     }
 
 
     // TODO create a function that tests if a rotation works, for example on load?
     // TODO create some sort of functionality that automatically disables the plugin once a rotation has been completed.
+}
+
+
+class InvalidPathError extends Error {
+    constructor(message) {
+        super(message)
+        if (Error.captureStackTrace) {
+            Error.captureStackTrace(this, InvalidPathError)
+        }
+
+        this.name = this.constructor.name;
+    }
 }
