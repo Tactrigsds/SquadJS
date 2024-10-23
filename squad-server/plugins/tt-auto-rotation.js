@@ -3,9 +3,7 @@ import fs from "fs";
 
 export default class TTAutoRotation extends BasePlugin {
     static get description() {
-        return (
-            "Plugin meant to allow users to kill themselves(i.e double swap themselves) so they can get rid of the running man bug"
-        );
+        return ("Plugin used for automatically running set rotations and having fog of war removed at the start of a round.");
     }
 
     static get defaultEnabled() {
@@ -39,6 +37,11 @@ export default class TTAutoRotation extends BasePlugin {
                 description: "Commands that can be used to enable the auto fog of war, it's status etc.",
                 default: ['!autofog']
             },
+            rotationCommand: {
+                required: false,
+                description: "Command that triggers a reload of a rotation from disk.",
+                default: ['!rotation']
+            },
             squadJSConfigFilePath: {
                 required: false,
                 description: "The path to the SquadJS config file.",
@@ -55,7 +58,6 @@ export default class TTAutoRotation extends BasePlugin {
         this.setNextLayerInRotation = this.setNextLayerInRotation.bind(this)
         this.rotation = null;
         this.configFilePath = fs.realpathSync(this.options.squadJSConfigFilePath)
-        this.testOutputPath = './test-output.json'
 
         /*
          Matches the format of a map set, with optional subfactions.
@@ -114,6 +116,7 @@ export default class TTAutoRotation extends BasePlugin {
 
     async onChatMessage(info) {
         const pMessages = info.message.toLowerCase().split(" ")
+        if (info.chat !== 'ChatAdmin') return
 
         if (this.options.autoRemoveFogOfWarCommand.includes(pMessages[0])) {
             if (pMessages[1] === 'toggle') {
@@ -126,15 +129,50 @@ export default class TTAutoRotation extends BasePlugin {
                 await this.saveFogOfWarState(info)
             }
         }
+        else if (this.options.rotationCommand.includes(pMessages[0])) {
+            if (pMessages[1] === `toggle`) {
+                await this.toggleAutoRotation(info)
+            }
+            else if (pMessages[1] === `status`) {
+                await this.sendAutoRotationStatus(info)
+            }
+            else if (pMessages[1] === `save`) {
+                await this.saveAutoRotationState(info)
+            }
+            // else if (pMessages[1] === `load`) {
+            //
+            // }
+        }
     }
 
+
+    async sendAutoRotationStatus(info) {
+        const state = this.server.autoRotationEnabled ? 'Enabled' : 'Disabled'
+        if (info) {
+            await this.server.rcon.warn(info.steamID, `AutoRotation is currently ${state}.`)
+        }
+    }
 
     async sendFogOfWarStatus(info) {
         const state = this.server.autoRemovefogOfWar ? 'Enabled' : 'Disabled'
         if (info) {
-            await this.server.rcon.warn(info.steamID, `Auto fog is currently ${state}.`)
+            await this.server.rcon.warn(info.steamID, `AutoFogless is currently ${state}.`)
         }
     }
+
+    async toggleAutoRotation(info) {
+        this.server.autoRotationEnabled = !this.server.autoRotationEnabled
+        const state = this.server.autoRotationEnabled ? 'on' : 'off'
+        this.verbose(1, `Toggled auto rotation ${state}.`)
+        if (info) {
+            if (this.server.autoRotationEnabled) {
+                await this.server.rcon.warn(info.steamID, `AutoRotation has been enabled. \nSquadJS will now automatically set the next map in the loaded rotation upon a new game starting.`)
+            } else {
+                await this.server.rcon.warn(info.steamID, `AutoRotation has been disabled.`)
+            }
+        }
+    }
+
 
     async fogOfWarToggle(info) {
         this.server.autoRemovefogOfWar = !this.server.autoRemovefogOfWar
@@ -142,19 +180,20 @@ export default class TTAutoRotation extends BasePlugin {
         this.verbose(1, `Toggled auto fog of war ${state}`)
         if (info) {
             if (this.server.autoRemovefogOfWar) {
-                await this.server.rcon.warn(info.steamID, `Auto fog has been toggled on.\nFog will now be automatically removed at the start of a game.`)
+                await this.server.rcon.warn(info.steamID, `AutoFogless has been toggled on.\nFog will now be automatically removed at the start of a game.`)
             } else {
-                await this.server.rcon.warn(info.steamID, `Auto fog has been toggled off.\n`)
+                await this.server.rcon.warn(info.steamID, `AutoFogless has been toggled off.\n`)
             }
         }
     }
 
-    async saveFogOfWarState(info) {
+
+    async saveAutoRotationState(info) {
         if (this.autoRotationPluginConfig) {
-            this.autoRotationPluginConfig.autoRemovefogOfWar = this.server.autoRemovefogOfWar
+            this.autoRotationPluginConfig.rotationEnabled = this.server.autoRotationEnabled
             try {
                 await this.saveConfigFile(this.configData, this.configFilePath)
-                await this.server.rcon.warn(info.steamID, `Succesfully saved autofog state to config file. Note that this `)
+                await this.server.rcon.warn(info.steamID, `Succesfully saved autorotation state to config file. Note that this makes this setting should SquadJS get restarted.`)
             } catch (e) {
                 this.verbose(`Unable to save config file. Error: `)
                 console.log(e)
@@ -165,39 +204,23 @@ export default class TTAutoRotation extends BasePlugin {
         }
     }
 
-    saveConfigFile(data, configFilePath) {
-        const tempFilePath = './config.temp.json'
-        if (!configFilePath) {
-            throw Error('Unable to save config, the path stored is either invalid or nonexistent.')
-        }
-        let jsonString
-        try {
-            jsonString = JSON.stringify(data, null, 2)
-            this.verbose(3, `Succesfully parsed config data back into JSON`)
-        } catch (e) {
-            this.verbose(1, `Unable to save changed config file, error when parsing JSON data into a string.`)
-            console.log(e)
-            return
-        }
-        try {
-            fs.writeFileSync(tempFilePath, jsonString, 'utf-8')
-            fs.renameSync(tempFilePath, configFilePath);
-            this.verbose(1, `Config file succesfully updated.`)
-        } catch (err) {
-            this.verbose(1, `Failed to save config safely`)
-            if (fs.existsSync(tempFilePath)) {
-                fs.unlinkSync(tempFilePath);
+    async saveFogOfWarState(info) {
+        if (this.autoRotationPluginConfig) {
+            this.autoRotationPluginConfig.autoRemovefogOfWar = this.server.autoRemovefogOfWar
+            try {
+                await this.saveConfigFile(this.configData, this.configFilePath)
+                await this.server.rcon.warn(info.steamID, `Succesfully saved AutoFogless state to the SquadJS config file. Note that this stores the AutoFogless state even should SquadJS get restarted.`)
+            } catch (e) {
+                this.verbose(`Unable to save config file. Error: `)
+                console.log(e)
             }
+
+        } else {
+            await this.server.rcon.warn(info.steamID, `Config data was improperly loaded by the plugin. Not able to save updated parameters.`)
         }
     }
 
-    async loadConfigFile() {
-        if (!this.configFilePath) {
-            throw Error('Unable to load config, the path stored is either invalid or nonexistent.')
-        }
-        const rawData = fs.readFileSync(this.configFilePath, "utf-8")
-        return JSON.parse(rawData)
-    }
+
 
     async loadRotationCommand() {
 
@@ -207,7 +230,7 @@ export default class TTAutoRotation extends BasePlugin {
     async removeFogOfWar() {
         await this.server.rcon.setFogOfWar(0)
         this.verbose(1, `Turning off fog...`)
-        this.server.warnAllAdmins(`SquadJS: Turning off fog...`)
+        await this.server.warnAllAdmins(`SquadJS: Turning off fog...`)
     }
 
     async setNextLayerInRotation() {
@@ -258,7 +281,7 @@ export default class TTAutoRotation extends BasePlugin {
     async loadRotation() {
         if (this.options.rotationEnabled) {
             if (!this.options.rotationPath || !this.options.rotationPath.length) {
-                await this.unmount()
+                // TODO create a custom error for this.
                 throw new Error('Need to have a valid file path if a rotation is enabled.')
             }
         }
@@ -310,6 +333,41 @@ export default class TTAutoRotation extends BasePlugin {
         const rotationData = newData.join("\n")
         fs.writeFileSync(this.options.rotationPath, rotationData, 'utf-8')
     }
+
+    saveConfigFile(data, configFilePath) {
+        const tempFilePath = './config.temp.json'
+        if (!configFilePath) {
+            throw Error('Unable to save config, the path stored is either invalid or nonexistent.')
+        }
+        let jsonString
+        try {
+            jsonString = JSON.stringify(data, null, 2)
+            this.verbose(3, `Succesfully parsed config data back into JSON`)
+        } catch (e) {
+            this.verbose(1, `Unable to save changed config file, error when parsing JSON data into a string.`)
+            console.log(e)
+            return
+        }
+        try {
+            fs.writeFileSync(tempFilePath, jsonString, 'utf-8')
+            fs.renameSync(tempFilePath, configFilePath);
+            this.verbose(1, `Config file succesfully updated.`)
+        } catch (err) {
+            this.verbose(1, `Failed to save config safely`)
+            if (fs.existsSync(tempFilePath)) {
+                fs.unlinkSync(tempFilePath);
+            }
+        }
+    }
+
+    async loadConfigFile() {
+        if (!this.configFilePath) {
+            throw Error('Unable to load config, the path stored is either invalid or nonexistent.')
+        }
+        const rawData = fs.readFileSync(this.configFilePath, "utf-8")
+        return JSON.parse(rawData)
+    }
+
 
     // TODO create a function that tests if a rotation works, for example on load?
     // TODO create some sort of functionality that automatically disables the plugin once a rotation has been completed.

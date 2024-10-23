@@ -440,6 +440,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
         // TODO change to use a different variable, perhaps something like "autosetMap", which the nextlayerset plugin can use
         // To then change the "this.server.nexltayerset" variable once the map set is detected.
+        if (this.server.rotationEnabled) return
         setTimeout(async () => {
             const tempOptions = await this.parsePoolParameters([], null, false)
             const tempPool = await this.generatePoolFromParameters(this.safeLayerList, [], tempOptions);
