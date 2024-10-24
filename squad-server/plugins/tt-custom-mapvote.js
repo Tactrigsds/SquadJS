@@ -429,6 +429,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             mapPoolVoteTie: false
         }
 
+        if (this.server.rotationEnabled) return
 
         // Don't autoset if we're on jensens or a seeding map.
         if (this.server.autoSetLayerOnRoundStart) {
@@ -440,7 +441,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
         // TODO change to use a different variable, perhaps something like "autosetMap", which the nextlayerset plugin can use
         // To then change the "this.server.nexltayerset" variable once the map set is detected.
-        if (this.server.rotationEnabled) return
         setTimeout(async () => {
             const tempOptions = await this.parsePoolParameters([], null, false)
             const tempPool = await this.generatePoolFromParameters(this.safeLayerList, [], tempOptions);
@@ -599,7 +599,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
         else if (layerListVersion === LAYER_LIST_VERSION_ENUM.VERSION7) {
             const regex = /^(?!\/\/)[^,;\n]+(?:[;,][^,;\n]+)*$/;
-            // Remove csv header.
+
             for (let line of lines) {
                 if (!regex.test(line)) {
                     continue
@@ -647,7 +647,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         let layers = []
         try {
             const data = fs.readFileSync(path, 'utf-8');
-            this.verbose('Loaded file')
+            this.verbose(1, 'Loaded file')
             layers = await this.parseCuratedList(data, this.options.csvDelimiter, this.options.layerlistVersion)
         } catch (err) {
             this.verbose(1, `Error occured when loading the layers file from path: ${path}`);
@@ -772,219 +772,232 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         const splitMessage = info.message.toLowerCase().split(' ');
         const message = info.message.toLowerCase();
 
+        if (this.options.ignoreChats.includes(info.chat)) return;
+
         /*
         Chat commands, admin only.
          */
-        if (!this.options.ignoreChats.includes(info.chat)) {
-            if (this.options.generatePoolCommands.includes(splitMessage[0])) {
-                if (this.mapVoteRunning) {
-                    await this.server.rcon.warn(
-                        playerInfo.steamID,
-                        'Cannot generate a new pool while a mapvote is running.'
-                    );
-                    return;
-                }
-
-                const currentTime = Date.now();
-                // This is here, so I can comment out the time check during testing without getting errors.
-                // eslint-disable-next-line no-unused-vars
-                const timeSinceLastPoolGen = currentTime - this.poolGenerationTime;
-
-                if (timeSinceLastPoolGen < this.options.generatePoolFrequencyLimitSeconds * 1000) {
-                    await this.server.rcon.warn(
-                        playerInfo.steamID,
-                        `Pool was regenerated too recently. Please wait ${Math.abs(
-                            Math.round((this.options.generatePoolFrequencyLimitSeconds * 1000 - timeSinceLastPoolGen) / 1000)
-                        )} seconds before re-rolling it again`
-                    );
-                    return;
-                }
-
-                this.poolGenerationTime = currentTime;
-
-                try {
-                    this.mapPool = await this.generatePoolMain([], splitMessage, playerInfo, true);
-                } catch (err) {
-                    await this.server.rcon.warn(playerInfo.steamID, 'Something went wrong when generating pool');
-                    this.verbose(1, 'Error occured when sending pool.');
-                    this.verbose(1, err);
-                }
-                this.verbose(2, 'Map pool generated, triggered by admin: ' + playerInfo.name);
-                const message = `Newly generated map pool, triggered by: ${playerInfo.name}`;
-                await this.sendCurrentPool(playerInfo, message);
-                this.adminTriggeringPoolGen = { admin: playerInfo.name, steamID: playerInfo.steamID}
-            }
-
-            else if (this.options.startVoteCommands.includes(splitMessage[0])) {
-                if (this.mapVoteRunning) {
-                    await this.server.rcon.warn(
-                        playerInfo.steamID,
-                        'Mapvote already running. End the old one before starting a new one.'
-                    );
-                    return;
-                }
-
-                const options = this.processPoolForMapVote(this.mapPool)
-                this.mapVoteRunning = true;
-                this.voteOptions = options;
-                await this.callVote(this.voteOptions);
-            }
-
-            else if (message === this.options.setNextFromWinnerCommand) {
-                if (!this.mapVoteWinner) {
-                    await this.server.rcon.warn(
-                        playerInfo.steamID,
-                        'Unable to set next map. No map vote winner is saved.'
-                    );
-                    return;
-                }
-                const command = assembleSetNextRCONCommandFromLayerObject(this.mapVoteWinner);
-                await this.server.rcon.setNextLayer(command);
+        if (this.options.generatePoolCommands.includes(splitMessage[0])) {
+            if (this.mapVoteRunning) {
                 await this.server.rcon.warn(
                     playerInfo.steamID,
-                    'The winner of the vote has been set: \n' + `${this.mapVoteWinner.level}`
+                    'Cannot generate a new pool while a mapvote is running.'
+                );
+                return;
+            }
+
+            const currentTime = Date.now();
+            // This is here, so I can comment out the time check during testing without getting errors.
+            // eslint-disable-next-line no-unused-vars
+            const timeSinceLastPoolGen = currentTime - this.poolGenerationTime;
+
+            if (timeSinceLastPoolGen < this.options.generatePoolFrequencyLimitSeconds * 1000) {
+                await this.server.rcon.warn(
+                    playerInfo.steamID,
+                    `Pool was regenerated too recently. Please wait ${Math.abs(
+                        Math.round((this.options.generatePoolFrequencyLimitSeconds * 1000 - timeSinceLastPoolGen) / 1000)
+                    )} seconds before re-rolling it again`
+                );
+                return;
+            }
+
+            this.poolGenerationTime = currentTime;
+
+            try {
+                this.mapPool = await this.generatePoolMain([], splitMessage, playerInfo, true);
+            } catch (err) {
+                await this.server.rcon.warn(playerInfo.steamID, 'Something went wrong when generating pool');
+                this.verbose(1, 'Error occured when sending pool.');
+                this.verbose(1, err);
+            }
+            this.verbose(2, 'Map pool generated, triggered by admin: ' + playerInfo.name);
+            const message = `Newly generated map pool, triggered by: ${playerInfo.name}`;
+            await this.sendCurrentPool(playerInfo, message);
+            this.adminTriggeringPoolGen = { admin: playerInfo.name, steamID: playerInfo.steamID}
+        }
+
+        else if (this.options.startVoteCommands.includes(splitMessage[0])) {
+            if (this.mapVoteRunning) {
+                await this.server.rcon.warn(
+                    playerInfo.steamID,
+                    'Mapvote already running. End the old one before starting a new one.'
+                );
+                return;
+            }
+
+            const options = this.processPoolForMapVote(this.mapPool)
+            this.mapVoteRunning = true;
+            this.voteOptions = options;
+            await this.callVote(this.voteOptions);
+        }
+
+        else if (message === this.options.setNextFromWinnerCommand) {
+            if (!this.mapVoteWinner) {
+                await this.server.rcon.warn(
+                    playerInfo.steamID,
+                    'Unable to set next map. No map vote winner is saved.'
+                );
+                return;
+            }
+            const command = assembleSetNextRCONCommandFromLayerObject(this.mapVoteWinner);
+            await this.server.rcon.setNextLayer(command);
+            await this.server.rcon.warn(
+                playerInfo.steamID,
+                'The winner of the vote has been set: \n' + `${this.mapVoteWinner.level}`
+            );
+        }
+
+        else if (this.options.readPoolCommands.includes(splitMessage[0])) {
+            let message;
+            if (this.adminTriggeringPoolGen.adminName && this.adminTriggeringPoolGen.steamID) {
+                message = `Current map pool - pool generation triggered by admin: ${this.adminTriggeringPoolGen.adminName}`
+            }
+            else {
+                message = `Current map pool - pool generation triggered by SquadJS`
+            }
+            const timeToRemove = (3600 * 4 * 1000)
+            const tempTime = new Date(+this.poolGenerationTime - timeToRemove)
+            const hour = tempTime.getUTCHours().toString().padStart(2, '0')
+            const minute = tempTime.getUTCMinutes().toString().padStart(2, '0')
+
+            message += `\n`
+            message += `Generation time: ${hour}:${minute} EST`
+            await this.sendCurrentPool(playerInfo, message);
+        }
+
+        // Set next from a pick in the pool, given an index in the pool.
+        else if (splitMessage[0] === this.options.setNextFromPoolCommand) {
+            this.verbose(3, 'Set Next Command Triggered');
+            if (!(splitMessage.length === 2)) {
+                await this.server.rcon.warn(
+                    playerInfo.steamID,
+                    'Invalid amount of parameters to the setnext command.\n' +
+                    'The second parameter must be a number corresponding to one of the map pool options.'
+                );
+
+            } else if (this.mapPool === null || !this.mapPool.length) {
+                await this.server.rcon.warn(
+                    playerInfo.steamID,
+                    'The map pool is currently empty. Regenerate it before attempting to set a map from the pool.'
                 );
             }
 
-            else if (this.options.readPoolCommands.includes(splitMessage[0])) {
-                let message;
-                if (this.adminTriggeringPoolGen.adminName && this.adminTriggeringPoolGen.steamID) {
-                    message = `Current map pool - pool generation triggered by admin: ${this.adminTriggeringPoolGen.adminName}`
-                }
-                else {
-                    message = `Current map pool - pool generation triggered by SquadJS`
-                }
-                const timeToRemove = (3600 * 4 * 1000)
-                const tempTime = new Date(+this.poolGenerationTime - timeToRemove)
-                const hour = tempTime.getUTCHours().toString().padStart(2, '0')
-                const minute = tempTime.getUTCMinutes().toString().padStart(2, '0')
-
-                message += `\n`
-                message += `Generation time: ${hour}:${minute} EST`
-                await this.sendCurrentPool(playerInfo, message);
+            else if (!splitMessage[1].match(/^[0-9]+/)) {
+                await this.server.rcon.warn(playerInfo.steamID, 'Invalid type of parameter, must be a number\n'
+                );
             }
 
-            // Set next from a pick in the pool, given an index in the pool.
-            else if (splitMessage[0] === this.options.setNextFromPoolCommand) {
-                this.verbose(3, 'Set Next Command Triggered');
-                if (!(splitMessage.length === 2)) {
-                    await this.server.rcon.warn(
-                        playerInfo.steamID,
-                        'Invalid amount of parameters to the setnext command.\n' +
-                        'The second parameter must be a number corresponding to one of the map pool options.'
-                    );
-
-                } else if (this.mapPool === null || !this.mapPool.length) {
-                    await this.server.rcon.warn(
-                        playerInfo.steamID,
-                        'The map pool is currently empty. Regenerate it before attempting to set a map from the pool.'
-                    );
-                }
-
-                else if (!splitMessage[1].match(/^[0-9]+/)) {
-                    await this.server.rcon.warn(playerInfo.steamID, 'Invalid type of parameter, must be a number\n'
-                    );
-                }
-
-                else if (parseInt(splitMessage[1].trim()) > this.mapPoolSize || parseInt(splitMessage[1].trim()) < 1) {
-                    await this.server.rcon.warn(
-                        playerInfo.steamID,
-                        'The given number must be within bounds of the generated map pool, bounds are currently: ' +
-                        '1-' +
-                        this.mapPoolSize
-                    );
-                }
-
-                else {
-                    const selectedChoice = +splitMessage[1] - 1;
-                    const selectedLayer = this.mapPool[selectedChoice];
-                    const message = `Setting next map to: ${selectedLayer.layer} - ${selectedLayer.faction1}_${selectedLayer.subfaction1} vs ${selectedLayer.faction2}_${selectedLayer.subfaction2}`;
-                    await this.server.rcon.warn(playerInfo.steamID, message);
-                    const command = assembleSetNextRCONCommandFromLayerObject(selectedLayer);
-                    await this.server.rcon.setNextLayer(command);
-                }
+            else if (parseInt(splitMessage[1].trim()) > this.mapPoolSize || parseInt(splitMessage[1].trim()) < 1) {
+                await this.server.rcon.warn(
+                    playerInfo.steamID,
+                    'The given number must be within bounds of the generated map pool, bounds are currently: ' +
+                    '1-' +
+                    this.mapPoolSize
+                );
             }
 
-            // Reroll command, creates a new pool with last used parameters.
-            // Keeps specific pool picks if the index of a pick is given as a parameter to the command.
-            else if (splitMessage[0] === this.options.rerollCommand) {
-                this.verbose(3, 'Reroll command triggered.');
-                if (this.mapVoteRunning) {
-                    await this.server.rcon.warn(
-                        playerInfo.steamID,
-                        'Cannot generate a new pool while a mapvote is running.'
-                    );
-                    return;
-                }
-
-                let tempParameters;
-                let poolToKeep = []
-                if (!this.previousParameters.length) {
-                    await this.server.rcon.warn(
-                        playerInfo.steamID,
-                        `There were no valid parameters stored from the previous pool generation.\nRunning with default parameters.`
-                    );
-                } else {
-                    const indexesToReroll = []
-
-                    for (let i = 1; i < splitMessage.length; i++) {
-                        const regex = (/^[0-9]+/)
-                        if (regex.test(splitMessage[i])) {
-                            if (+splitMessage[i] > 0 && +splitMessage[i] <= this.mapPoolSize && !indexesToReroll.includes(+splitMessage[i])) {
-                                indexesToReroll.push(+splitMessage[i])
-                            }
-                        }
-                    }
-
-                    for (let i = 0; i < this.mapPoolSize; i++) {
-                        if (!indexesToReroll.includes(i + 1)) {
-                            poolToKeep[i] = this.mapPool[i]
-                        }
-                    }
-
-                    tempParameters = this.previousParameters;
-                }
-
-
-                // TODO currently the pool with add more of the same maps, if one was used as a parameter. Add handling for this case.
-                this.mapPool = await this.generatePoolMain(poolToKeep, tempParameters, playerInfo)
-
-                await this.sendCurrentPool(playerInfo, `Rerolling map pool with previous parameters:`);
-            }
-
-            else if (splitMessage[0] === '!runoff') {
-                let options;
-                if (this.tiedVoteFlags.regularVoteTie) {
-                    this.server.rcon.warn(playerInfo.steamID, `SquadJS: Initiating a runoff vote with selections from the standard vote.`)
-                    options = this.tiedVoteFlags.votePicks
-                }
-                else if (this.tiedVoteFlags.mapPoolVoteTie) {
-                    this.server.rcon.warn(playerInfo.steamID, `SquadJS: Initiating a runoff vote with tied options from the map pool vote.`)
-                    this.mapVoteRunning = true;
-                    options = this.processPoolForMapVote(this.tiedVoteFlags.votePicks)
-                } else {
-                    return this.server.rcon.warn(playerInfo.steamID, `SquadJS: No tie was detected; a runoff vote cannot be started.`)
-                }
-
-                this.voteOptions = options;
-                this.callVote(this.voteOptions);
-            }
-
-            // Toggle autoset on or off via a command.
-            else if (splitMessage[0] === "!autoset") {
-                if (splitMessage[1] === "on") {
-                    this.server.autoSetLayerOnRoundStart = true
-                }
-                else if (splitMessage[1] === "off") {
-                    this.server.autoSetLayerOnRoundStart = false
-                }
-                else {
-                    this.server.autoSetLayerOnRoundStart = !this.server.autoSetLayerOnRoundStart
-                }
-                const state = this.server.autoSetLayerOnRoundStart ? "on" : "off"
-                this.server.rcon.warn(playerInfo.steamID, `Autosetting layer on round start has been turned ${state}. Note that this only lasts for the current session of SquadJS, it will reset if SquadJS is restarted.`)
+            else {
+                const selectedChoice = +splitMessage[1] - 1;
+                const selectedLayer = this.mapPool[selectedChoice];
+                const message = `Setting next map to: ${selectedLayer.layer} - ${selectedLayer.faction1}_${selectedLayer.subfaction1} vs ${selectedLayer.faction2}_${selectedLayer.subfaction2}`;
+                await this.server.rcon.warn(playerInfo.steamID, message);
+                const command = assembleSetNextRCONCommandFromLayerObject(selectedLayer);
+                await this.server.rcon.setNextLayer(command);
             }
         }
+
+        // Reroll command, creates a new pool with last used parameters.
+        // Keeps specific pool picks if the index of a pick is given as a parameter to the command.
+        else if (splitMessage[0] === this.options.rerollCommand) {
+            this.verbose(3, 'Reroll command triggered.');
+            if (this.mapVoteRunning) {
+                await this.server.rcon.warn(
+                    playerInfo.steamID,
+                    'Cannot generate a new pool while a mapvote is running.'
+                );
+                return;
+            }
+
+            let tempParameters;
+            let poolToKeep = []
+            if (!this.previousParameters.length) {
+                await this.server.rcon.warn(
+                    playerInfo.steamID,
+                    `There were no valid parameters stored from the previous pool generation.\nRunning with default parameters.`
+                );
+            } else {
+                const indexesToReroll = []
+
+                for (let i = 1; i < splitMessage.length; i++) {
+                    const regex = (/^[0-9]+/)
+                    if (regex.test(splitMessage[i])) {
+                        if (+splitMessage[i] > 0 && +splitMessage[i] <= this.mapPoolSize && !indexesToReroll.includes(+splitMessage[i])) {
+                            indexesToReroll.push(+splitMessage[i])
+                        }
+                    }
+                }
+
+                for (let i = 0; i < this.mapPoolSize; i++) {
+                    if (!indexesToReroll.includes(i + 1)) {
+                        poolToKeep[i] = this.mapPool[i]
+                    }
+                }
+
+                tempParameters = this.previousParameters;
+            }
+
+
+            // TODO currently the pool with add more of the same maps, if one was used as a parameter. Add handling for this case.
+            this.mapPool = await this.generatePoolMain(poolToKeep, tempParameters, playerInfo)
+
+            await this.sendCurrentPool(playerInfo, `Rerolling map pool with previous parameters:`);
+        }
+
+        else if (splitMessage[0] === '!runoff') {
+            await this.runoffCommand(playerInfo)
+        }
+
+        // Toggle autoset on or off via a command.
+        else if (splitMessage[0] === "!autoset") {
+            if (splitMessage[1] === "on") {
+                this.server.autoSetLayerOnRoundStart = true
+            }
+            else if (splitMessage[1] === "off") {
+                this.server.autoSetLayerOnRoundStart = false
+            }
+            else {
+                this.server.autoSetLayerOnRoundStart = !this.server.autoSetLayerOnRoundStart
+            }
+            const state = this.server.autoSetLayerOnRoundStart ? "on" : "off"
+            await this.server.rcon.warn(playerInfo.steamID, `Autosetting layer on round start has been turned ${state}. Note that this only lasts for the current session of SquadJS, it will reset if SquadJS is restarted.`)
+        }
+
+    }
+
+    async rerollCommand(playerInfo, messages) {
+
+    }
+
+    async runoffCommand(playerInfo) {
+        let options;
+
+        if (!this.voteInProgress) {
+            await this.server.rcon.warn
+        }
+
+        if (this.tiedVoteFlags.regularVoteTie) {
+            await this.server.rcon.warn(playerInfo.steamID, `SquadJS: Initiating a runoff vote with selections from the standard vote.`)
+            options = this.tiedVoteFlags.votePicks
+        }
+        else if (this.tiedVoteFlags.mapPoolVoteTie) {
+            await this.server.rcon.warn(playerInfo.steamID, `SquadJS: Initiating a runoff vote with tied options from the map pool vote.`)
+            this.mapVoteRunning = true;
+            options = this.processPoolForMapVote(this.tiedVoteFlags.votePicks)
+        } else {
+            return this.server.rcon.warn(playerInfo.steamID, `SquadJS: No tie was detected; a runoff vote cannot be started.`)
+        }
+        this.voteOptions = options;
+        await this.callVote(options);
     }
 
     async rerollPool() {
@@ -1425,12 +1438,17 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         return newPool;
     }
 
+    resetVoteFlags() {
+        this.tiedVoteFlags = {
+            votePicks: [],
+            regularVoteTie: false,
+            mapPoolVoteTie: false
+        }
+    }
 
     async tallyVotes() {
         let max = 0;
         let winner = '';
-        const winnerIndex = null
-
         const totals = [];
         let tie = false;
         clearInterval(this.voteBroadcast);
@@ -1449,17 +1467,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             }
             if (totals[i] === max) {
                 tie = true;
-                if (this.mapVoteRunning) {
-                    // Insert the pool elements if the vote was using the mappool
-                    this.tiedVoteFlags.votePicks.push(this.mapPool[i])
-                    this.tiedVoteFlags.mapPoolVoteTie = true
-                    this.tiedVoteFlags.regularVoteTie = false
-                } else {
-                    // If it was a manual vote, i.e !vote
-                    this.tiedVoteFlags.votePicks.push(this.voteOptions[i])
-                    this.tiedVoteFlags.mapPoolVoteTie = false
-                    this.tiedVoteFlags.regularVoteTie = true
-                }
             }
             if (totals[i] > max) {
                 tie = false;
@@ -1467,34 +1474,50 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 if (this.mapVoteRunning) {
                     this.mapVoteWinner = this.mapPool[i];
                 }
+
                 max = totals[i];
             }
         }
 
+        if (tie) {
+            for (let i = 0; i < this.voteOptions.length; i++) {
+                if (totals[i] === max) {
+                    if (this.mapVoteRunning) {
+                        // Insert the pool elements if the vote was using the mappool
+                        this.tiedVoteFlags.votePicks.push(this.mapPool[i])
+                        this.tiedVoteFlags.mapPoolVoteTie = true
+                        this.tiedVoteFlags.regularVoteTie = false
+                    } else {
+                        // If it was a manual vote, i.e !vote
+                        this.tiedVoteFlags.votePicks.push(this.voteOptions[i])
+                        this.tiedVoteFlags.mapPoolVoteTie = false
+                        this.tiedVoteFlags.regularVoteTie = true
+                    }
+                }
+            }
+        }
+
         if (this.mapVoteRunning) {
-            this.mapVoteRunning = false;
             if (!tie) {
                 if (this.options.autoSetMapVoteWinner && this.mapVoteWinner) {
                     const command = assembleSetNextRCONCommandFromLayerObject(this.mapVoteWinner);
                     await this.server.rcon.setNextLayer(command);
                 }
             }
-        }
 
+            this.mapVoteRunning = false;
+        }
 
         const totalsStr = totals
             .map((value, index) => `${this.voteOptions[index]}: ${value} votes,`)
             .join(' ')
             .slice(0, -1);
 
+
         if (tie) {
             await this.server.rcon.broadcast(
                 `Server: There has been a tie! Total votes: ${this.ballotBox.size}.\n${totalsStr}`
             );
-            for (let i = 0; i < 3; i++) {
-                await this.server.warnAllAdmins(`SquadJS: A tie has been detected in the vote.\nPlease use '!runoff' to initiate a new vote with the tied options.`)
-                await delay(this.server.warnMessagePersistenceTimeMilliSeconds)
-            }
 
         } else {
             let msg;
@@ -1502,11 +1525,9 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             if (msg.length >= this.server.serverBroadcastCharLimit) {
                 msg = `Server: ${winner} has won the vote! Total votes: ${this.ballotBox.size}.`
             }
-            this.tiedVoteFlags = {
-                votePicks: [],
-                regularVoteTie: false,
-                mapPoolVoteTie: false
-            }
+
+            this.resetVoteFlags()
+
             await this.server.rcon.broadcast(msg);
         }
 
@@ -1515,6 +1536,12 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         };
         await this.channel.send(message);
         this.clearVote();
+        if (tie) {
+            for (let i = 0; i < 3; i++) {
+                await this.server.warnAllAdmins(`SquadJS: A tie has been detected in the vote.\nPlease use '!runoff' to initiate a new vote with the tied options.`)
+                await delay(this.server.warnMessagePersistenceTimeMilliSeconds)
+            }
+        }
     }
 
     async callVote(options) {
@@ -1545,7 +1572,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.ballotBox = new Map();
         this.voteOptions = [];
     }
-
 
 
     async customVoteLog(message, prefix = 1) {
@@ -1604,8 +1630,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     getRandomArrayElement(array) {
         return array[getRandomInt(0, array.length - 1)];
     }
-
-
 }
 
 function layerToStringFull(layer) {
