@@ -458,16 +458,7 @@ export default class AdminCommands extends DiscordBasePlugin {
         await this.listRecentMatchDataLong(playerInfo)
         break
 
-      // TODO THIS IS REALLY STUPID AND NEEDS TO BE FIXED.
       case '!factionswap':
-        await this.swapFactions(playerInfo)
-        break
-
-      case '!swapfactions':
-        await this.swapFactions(playerInfo)
-        break
-
-      case '!swapfaction':
         await this.swapFactions(playerInfo)
         break
 
@@ -646,19 +637,20 @@ export default class AdminCommands extends DiscordBasePlugin {
   async onPlayerConnected(info) {
     let plr = [];
     try {
-      plr = this.server.banlist.get(info.steamID);
+      plr = this.server.banlist.get(info.player.steamID);
     } catch (err) {
       console.log('admin-commands:321 ' + err);
       console.log(info);
       return;
     }
-    if (this.server.banlist.has(info.steamID) && plr.time >= Date.now() / 1000) {
+    if (this.server.banlist.has(info.player.steamID) && plr.time >= Date.now() / 1000) {
       const remainder = Math.round(plr.time - Date.now() / 1000);
-      this.server.rcon.kick(
-        info.steamID,
-        `You were recently kicked, please try again in ${remainder} seconds.`
+      await this.server.rcon.kick(
+          info.player.steamID,
+          `You were recently kicked, please try again in ${remainder} seconds.`
       );
-    } else if (this.server.banlist.has(info.steamID) && plr.time <= Date.now() / 1000) {
+    } else if (this.server.banlist.has(info.player.steamID) && plr.time <= Date.now() / 1000) {
+      this.verbose(1, `Removing previously banned player from banlist: ${plr}`)
       this.server.banlist.delete(plr);
     }
   }
