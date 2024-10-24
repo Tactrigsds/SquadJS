@@ -1,5 +1,7 @@
 import BasePlugin from './base-plugin.js';
 import fs from "fs";
+import { delay } from '../utils/utils.js';
+
 
 export default class TTAutoRotation extends BasePlugin {
     static get description() {
@@ -42,6 +44,11 @@ export default class TTAutoRotation extends BasePlugin {
                 description: "Command that triggers a reload of a rotation from disk.",
                 default: ['!rotation']
             },
+            automaticallyDisableRotationUponCompletion: {
+                required: false,
+                description: "Whether the plugin should automatically disable the autorotation flag upon completion of rotation.",
+                default: true
+            },
             squadJSConfigFilePath: {
                 required: false,
                 description: "The path to the SquadJS config file.",
@@ -56,7 +63,7 @@ export default class TTAutoRotation extends BasePlugin {
         this.loadRotation = this.loadRotation.bind(this)
         this.removeFogOfWar = this.removeFogOfWar.bind(this)
         this.setNextLayerInRotation = this.setNextLayerInRotation.bind(this)
-        this.rotation = null;
+        this.rotation = [];
         this.configFilePath = fs.realpathSync(this.options.squadJSConfigFilePath)
 
         /*
@@ -90,16 +97,17 @@ export default class TTAutoRotation extends BasePlugin {
             console.error(e)
         }
 
-        await new Promise(resolve => setTimeout(resolve, 500))
+        await delay(500)
     }
 
     async unmount() {
         this.server.removeEventListener(this.onNewGame)
+        this.server.removeEventListener(this.onChatMessage)
     }
 
 
     async onNewGame() {
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        await delay(2000)
 
         if (this.server.autoRemovefogOfWar) {
             setTimeout(async () => {
@@ -149,6 +157,10 @@ export default class TTAutoRotation extends BasePlugin {
                     await this.reloadRotationCommand(info)
                     break
                 }
+                case `send`: {
+                    await this.sendRotationToAdmin(info)
+                    break;
+                }
                 default: break
             }
         }
@@ -159,8 +171,12 @@ export default class TTAutoRotation extends BasePlugin {
         try {
             const rotation = await this.loadRotation()
             if (rotation && rotation.length) {
-                this.verbose(1, `Succesfully reloaded rotation.`)
-                await this.server.rcon.warn(info.steamID, `Succesfully reloaded rotation. \nRotation length: ${rotation.length}`)
+                this.verbose(1, `Successfully reloaded rotation.`)
+                await this.server.rcon.warn(info.steamID, `Successfully reloaded rotation. \nRotation length: ${rotation.length}`)
+                this.rotation = rotation
+                if (this.server.autoRotationEnabled) {
+                    await this.setNextLayerInRotation()
+                }
             }
             else {
                 this.verbose(1, `Something went wrong when loading rotation.`)
@@ -171,17 +187,37 @@ export default class TTAutoRotation extends BasePlugin {
             console.log(e)
             await this.server.rcon.warn(1, `SquadJS was unable to reload rotation.`)
         }
+
     }
 
 
     /**
      *
      * @param info
-     * @param {Array<string>} rotation
      * @returns {Promise<void>}
      */
-    async sendRotationToAdmin(info, rotation) {
+    async sendRotationToAdmin(info) {
+        const rotation = this.rotation
+        const messages = []
+        let message = `Currently loaded rotation: \n\n`
+        for (let i = 0; i < rotation.length; i++) {
+            const layer = rotation[i]
+            const messageToAdd =  `${i+1}. ${layer}\n`
+            if (message.length + messageToAdd.length >= this.server.warnMessageCharLimit) {
+                messages.push(message)
+                message = messageToAdd
+            } else {
+                message += messageToAdd
+            }
+        }
+        messages.push(message)
 
+        for (let i = 0; i < 3; i++) {
+            for (const msg of messages) {
+                await this.server.rcon.warn(info.steamID, msg)
+            }
+            await delay(this.server.warnMessagePersistenceTimeMilliSeconds)
+        }
     }
 
     async sendAutoRotationStatus(info) {
