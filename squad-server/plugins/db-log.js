@@ -35,7 +35,12 @@ export default class DBLog extends BasePlugin {
         required: false,
         description: 'A overridden server ID.',
         default: null
-      }
+      },
+        performIPMigration: {
+          required: false,
+            description: "Whether to perform the migration of the last used IPs from the players table to the PlayerIP table",
+            default: false
+        }
     };
   }
 
@@ -758,19 +763,13 @@ export default class DBLog extends BasePlugin {
         conflictFields: ['steamID']
       }
     );
-    // await this.models.PlayerIP.upsert(
-    //     {
-    //         steamID: info.player.steamID,
-    //         IP: info.ip
-    //     },
-    //     {
-    //         conflictFields: ['steamID', 'IP']
-    //     }
-    // )
-    await this.models.PlayerIP.create(
+    await this.models.PlayerIP.upsert(
         {
             steamID: info.player.steamID,
             IP: info.ip
+        },
+        {
+            conflictFields: ['steamID', 'IP']
         }
     )
   }
