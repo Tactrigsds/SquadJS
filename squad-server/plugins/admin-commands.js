@@ -268,8 +268,8 @@ export default class AdminCommands extends DiscordBasePlugin {
           channel.send(`Admin ${playerInfo.name} ${executedCommand} ${matched.name}.`);
         }
         break;
+
       case '!yeet':
-      case '!kick':
         if (shorthand) {
           this.server.rcon.kick(matched.steamID, `For ${reason}`);
           this.server.rcon.warn(
@@ -297,6 +297,29 @@ export default class AdminCommands extends DiscordBasePlugin {
             });
           }
         }
+        break;
+
+      case '!kick':
+        if (shorthand) {
+          this.server.rcon.kick(matched.steamID, `For ${reason}`);
+          this.server.rcon.warn(
+            playerInfo.steamID,
+            `Successfully ${executedCommand} ${matched.name} for ${reason}`
+          );
+          channel.send(
+            `Admin ${playerInfo.name} ${executedCommand} ${matched.name} for:\n${reason}`
+          );
+        } else {
+          this.server.rcon.kick(matched.steamID, reason);
+          this.server.rcon.warn(
+            playerInfo.steamID,
+            `Successfully ${executedCommand} ${matched.name} for ${reason}.`
+          );
+          channel.send(
+            `Admin ${playerInfo.name} ${executedCommand} ${matched.name} for:\n${reason}.`
+          );
+        }
+
         break;
 
       case '!timeout':
