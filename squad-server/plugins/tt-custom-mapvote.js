@@ -4,7 +4,7 @@ import {defaultMapList, factionMap, subfactionAbbreviations} from '../utils/fact
 import axios from "axios";
 import path from "path";
 import Logger from 'core/logger';
-import {delay, getLayerListLogPath} from "../utils/utils.js";
+import {delay, getLayerListLogPath, eventsEnum } from "../utils/utils.js";
 
 
 export default class TTCustomMapVote extends DiscordBasePlugin {
@@ -290,9 +290,9 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
     async mount() {
         this.verbose(2, 'Mounted');
-        this.server.on(this.server.eventsEnum.chatMessage, this.onChatMessage);
-        this.server.on(this.server.eventsEnum.newGame, this.onNewGame);
-        this.server.on(this.server.eventsEnum.databaseUpdated, this.onDatabaseUpdated)
+        this.server.on(eventsEnum.chatMessage, this.onChatMessage);
+        this.server.on(eventsEnum.newGame, this.onNewGame);
+        this.server.on(eventsEnum.databaseUpdated, this.onDatabaseUpdated)
         this.mapPoolSize = this.options.votingPoolSize
         this.regularLayerList = []
         this.server.autoSetLayerOnRoundStart = this.options.autoSetLayerOnRoundStart.enabled

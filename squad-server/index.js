@@ -74,22 +74,6 @@ export default class SquadServer extends EventEmitter {
     this.pingSquadJSAPI = this.pingSquadJSAPI.bind(this);
     this.pingSquadJSAPIInterval = 5 * 60 * 1000;
     this.pingSquadJSAPITimeout = null;
-
-    this.eventsEnum =  Object.freeze({
-      newGame: 'NEW_GAME',
-      roundEnd: 'ROUND_END',
-      nextLayerSet: 'MAP_SET',
-      chatMessage: 'CHAT_MESSAGE',
-      playerConnected: 'PLAYER_CONNECTED',
-      playerDisconnected: 'PLAYER_DISCONNECTED',
-      databaseUpdated: 'DATABASE_UPDATED',
-      possessedAdminCamera: 'POSSESSED_ADMIN_CAMERA',
-      unPossessedAdminCamera: 'UNPOSSESSED_ADMIN_CAMERA',
-      playerWarned: 'PLAYER_WARNED',
-      playerKicked: 'PLAYER_KICKED',
-      playerBanned: 'PLAYER_BANNED',
-      playerCreated: 'SQUAD_CREATED',
-    });
   }
 
   async watch() {

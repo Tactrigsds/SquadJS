@@ -1,7 +1,6 @@
 import BasePlugin from './base-plugin.js';
 import fs from "fs";
-import { delay } from '../utils/utils.js';
-
+import { delay, eventsEnum } from '../utils/utils.js';
 
 export default class TTAutoRotation extends BasePlugin {
     static get description() {
@@ -75,8 +74,8 @@ export default class TTAutoRotation extends BasePlugin {
     }
 
     async mount() {
-        this.server.on(this.server.eventsEnum.databaseUpdated, this.onNewGame)
-        this.server.on(this.server.eventsEnum.chatMessage, this.onChatMessage)
+        this.server.on(eventsEnum.databaseUpdated, this.onNewGame)
+        this.server.on(eventsEnum.chatMessage, this.onChatMessage)
 
         this.autoSetLayerOnRoundStartInitialState = this.server.autoSetLayerOnRoundStart
         this.server.autoRotationEnabled = this.options.rotationEnabled
@@ -220,6 +219,7 @@ export default class TTAutoRotation extends BasePlugin {
         }
     }
 
+
     async sendAutoRotationStatus(info) {
         const state = this.server.autoRotationEnabled ? 'Enabled' : 'Disabled'
         if (info) {
@@ -251,7 +251,7 @@ export default class TTAutoRotation extends BasePlugin {
     async fogOfWarToggle(info) {
         this.server.autoRemovefogOfWar = !this.server.autoRemovefogOfWar
         const state = this.server.autoRemovefogOfWar ? 'on' : 'off'
-        this.verbose(1, `Toggled auto fog of war ${state}`)
+        this.verbose(1, `Toggled auto fog of war ${state} by player: ${info.name} - ID: ${info.steamID}`)
         if (info) {
             if (this.server.autoRemovefogOfWar) {
                 await this.server.rcon.warn(info.steamID, `AutoFogless has been toggled on.\nFog will now be automatically removed at the start of a game.`)
@@ -412,7 +412,7 @@ export default class TTAutoRotation extends BasePlugin {
     }
 
     saveConfigFile(data, configFilePath) {
-        const tempFilePath = './config.temp.json'
+        const tempFilePath = './file.temp.json'
         if (!configFilePath) {
             throw Error('Unable to save config, the path stored is either invalid or nonexistent.')
         }
