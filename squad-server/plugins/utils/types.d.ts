@@ -16,3 +16,12 @@ export interface PluginOption {
     default: any
     example: any
 }
+
+export interface Player {
+    playerID: number,
+    name: string,
+    teamID: number,
+    squadID?: number,
+    isLeader?: boolean,
+    role: string
+}
