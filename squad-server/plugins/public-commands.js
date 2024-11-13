@@ -1,8 +1,8 @@
 // import DiscordBasePlugin from "./discord-base-plugin.js";
 import BasePlugin from "./base-plugin.js";
-import {getFactionsAndSubfactions} from "./utils/utils.js";
-import {delay, eventsEnum} from "../utils/utils.js";
-import {WARN_MESSAGE_PERSISTENCE_TIME_MS} from "../utils/custom-constants.js";
+import {sleep, getFactionsAndSubfactions} from "../utils/utils.js";
+
+import {eventsEnum, WARN_MESSAGE_PERSISTENCE_TIME_MS} from "../utils/constants.js";
 
 export default class PublicCommands extends BasePlugin {
   static get description() {
@@ -47,35 +47,30 @@ export default class PublicCommands extends BasePlugin {
 
   /**
    * @param message {ChatMessageEvent}
-   * @return {Promise<void>}
+   * @return
    */
   async showNextMapCommand(message) {
     let response;
 
     const command = message.message.toLowerCase().split(" ")[0].trim()
 
-    let commandMatched = false
-    for (const cmdAlias of this.options.showNextCommands) {
-      if (cmdAlias.toLowerCase() === command) {
-        commandMatched = true
-      }
-    }
+    const commandMatched = this.options.showNextCommands.some(cmdAlias => cmdAlias.toLowerCase() === command)
     if (!commandMatched) return
 
     const warns = []
 
     // Refresh the data about next map each team this command is used.
     this.server.nextMapData = await this.server.rcon.getNextMap()
-    const factionData = await getFactionsAndSubfactions(this.server.nextMapData)
+    const nextFactionsData = await getFactionsAndSubfactions(this.server.nextMapData)
 
-    if (!factionData) {
+    if (!nextFactionsData) {
       warns.push('SquadJS: There is either no next map set, or the plugin was unable to retrieve data about the next map.')
     } else {
       const nextLayer = this.server?.nextMapData.layer
-      const nextFaction1 = factionData.faction1
-      const nextFaction2 = factionData.faction2
-      let nextSubf1 = factionData.subfaction1
-      let nextSubf2 = factionData.subfaction2
+      const nextFaction1 = nextFactionsData.faction1
+      const nextFaction2 = nextFactionsData.faction2
+      let nextSubf1 = nextFactionsData.subfaction1
+      let nextSubf2 = nextFactionsData.subfaction2
 
       if (!nextSubf1) {
         nextSubf1 = 'CombinedArms'
@@ -114,7 +109,7 @@ export default class PublicCommands extends BasePlugin {
         for (const warnMessage of warns) {
           await this.server.rcon.warn(message.steamID, warnMessage)
         }
-       await delay(WARN_MESSAGE_PERSISTENCE_TIME_MS)
+       await sleep(WARN_MESSAGE_PERSISTENCE_TIME_MS)
       }
     }
   }
