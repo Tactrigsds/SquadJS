@@ -1,21 +1,5 @@
 import path from "path";
 
-export const eventsEnum =  Object.freeze({
-  newGame: 'NEW_GAME',
-  roundEnd: 'ROUND_END',
-  nextLayerSet: 'MAP_SET',
-  chatMessage: 'CHAT_MESSAGE',
-  playerConnected: 'PLAYER_CONNECTED',
-  playerDisconnected: 'PLAYER_DISCONNECTED',
-  databaseUpdated: 'DATABASE_UPDATED',
-  possessedAdminCamera: 'POSSESSED_ADMIN_CAMERA',
-  unPossessedAdminCamera: 'UNPOSSESSED_ADMIN_CAMERA',
-  playerWarned: 'PLAYER_WARNED',
-  playerKicked: 'PLAYER_KICKED',
-  playerBanned: 'PLAYER_BANNED',
-  playerCreated: 'SQUAD_CREATED',
-});
-
 
 export function getRandomArrayElement(array) {
     return array[getRandomInt(0, array.length - 1)];
@@ -50,16 +34,15 @@ export function getLayerListLogPath(logFolder, initDate = new Date()) {
     return path.join(logFolder, `tt-custom-mapvote_${dateString}.log`)
 }
 
-export async function getSplitfactions(factions){
-    const [t1, t2] = factions.split(" ");
-    const [team1, subfaction1] = t1.split('+')
-    const [team2, subfaction2] = t2.split('+')
-    return { faction1: team1, faction2: team2, subfaction1: subfaction1, subfaction2: subfaction2 }
-}
-
-export async function delay(delayInMS) {
+export async function sleep(delayInMS) {
     await new Promise((resolve) =>
         setTimeout(resolve, delayInMS)
     );
 }
 
+export async function getFactionsAndSubfactions(mapData) {
+    const [t1, t2] = mapData.factions.split(" ");
+    const [team1, subfaction1] = t1.split('+')
+    const [team2, subfaction2] = t2.split('+')
+    return {faction1: team1, faction2: team2, subfaction1: subfaction1, subfaction2: subfaction2}
+}
