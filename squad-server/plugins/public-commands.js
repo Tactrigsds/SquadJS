@@ -52,11 +52,15 @@ export default class PublicCommands extends BasePlugin {
   async showNextMapCommand(message) {
     let response;
 
+    const command = message.message.toLowerCase().split(" ")[0].trim()
+
+    let commandMatched = false
     for (const cmdAlias of this.options.showNextCommands) {
-      if (!message.message.toLowerCase().startsWith(cmdAlias.toLowerCase())) {
-        return
+      if (cmdAlias.toLowerCase() === command) {
+        commandMatched = true
       }
     }
+    if (!commandMatched) return
 
     const warns = []
 
