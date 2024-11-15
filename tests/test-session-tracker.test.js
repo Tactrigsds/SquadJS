@@ -1,11 +1,9 @@
-import {test, it} from "node:test";
-import assert from "node:assert";
+import {test} from "node:test";
+import assert from 'assert'
 import {
     initializeSessions,
-    logEndedSessions,
-    setEndSessions
+    updateSessions
 } from "../squad-server/plugins/tt-session-tracker-plugin.js";
-import {sleep} from "../squad-server/utils/utils.js";
 
 
 /** @type {Player} */
@@ -26,7 +24,7 @@ const testPlayer1 = {
 }
 /** @type {Player} */
 const testPlayer2 = {
-    playerID: 1,
+    playerID: 2,
     name: "testname2",
     teamID: 1,
     squadID: null,
@@ -39,38 +37,68 @@ const testPlayer2 = {
     suffix: "testname",
     possessClassname: "BP_Something"
 }
+/** @type {Player} */
+const testPlayer3 = {
+    playerID: 3,
+    name: "testname3",
+    teamID: 1,
+    squadID: null,
+    isLeader: false,
+    role: "Rifleman",
+    eosID: "00001234",
+    steamID: "10000",
+    playercontroller: "",
+    squad: null,
+    suffix: "testname",
+    possessClassname: "BP_Something"
+}
 
 
-/** @type {Player[]} */
-const testPlayers = [testPlayer1, testPlayer2]
 
 
-const testPlayerSessions= new Map()
+// Mock real usage.
+test("new version of the session tracker.", async () => {
+    const expectedEndedSessions = [testPlayer1, testPlayer2]
+    // let expectedPlayersInServerAfterUpdate = [testPlayer1]
 
-// console.log(testPlayerSessions)
-//
-// console.log(new Date())
-
-
-// Mock real usage. Initialize sessions.
-test("test that a player gets succesfully initialized to the session tracker.", async () => {
     /** @type {Map<string, Object>} */
-    const testPlayerSessions= new Map()
-    const testEndedSessions= new Map()
+    let playerSessions= new Map()
 
-    // Mock players in the server
+    /** @type {Map<string, Object>} */
+    const endedSessions= new Map()
 
     /** @type {Player[]} */
-    const testPlayers = [testPlayer1, testPlayer2]
+    const testPlayersAtStart = [testPlayer1, testPlayer2, testPlayer3]
 
-    const updatedSessions = initializeSessions(testPlayers, testPlayerSessions)
+    playerSessions = initializeSessions(testPlayersAtStart, playerSessions)
 
-    // Mock a player having left the server.
-    const afterPlayers = [testPlayer2]
-    await sleep(500)
-    const newSessions = setEndSessions(afterPlayers, updatedSessions)
-    console.log("mutated player sessions", newSessions)
-    const finalSessions = logEndedSessions(newSessions, testEndedSessions)
-    console.log("final sessions", finalSessions)
-    console.log("ended sessions", testEndedSessions)
+    // Mock players 1 and 2 having left
+    const testPlayersAfterWait = [testPlayer3]
+
+    playerSessions = updateSessions(testPlayersAfterWait, playerSessions, endedSessions)
+
+    // Assert that sessions were updated properly
+    assert.equal(playerSessions.has(testPlayer1.steamID), false)
+    assert.equal(playerSessions.has(testPlayer2.steamID), false)
+
+    assert.equal(expectedEndedSessions.some(player => {
+        return !endedSessions.has(player.steamID)
+    }), false, "The actual ended sessions did not match the players in the expected players")
+
+
+    // Players 2 and 3 have now rejoined
+    const testPlayersAfterRefresh = [testPlayer1, testPlayer2, testPlayer3]
+    playerSessions = initializeSessions(testPlayersAfterRefresh, playerSessions)
+    
+    const player1After = playerSessions.get(testPlayer1.steamID)
+    const player2After = playerSessions.get(testPlayer2.steamID)
+    const player3After = playerSessions.get(testPlayer3.steamID)
+
+    // Check that all the players in the session map has the expected start and end relationships.
+    assert.equal(player1After.sessionStart, player1After.sessionEnd, "Player 1 did not have their session end updated as intended")
+    assert.equal(player2After.sessionStart, player2After.sessionEnd, "Player 1 did not have their session end updated as intended")
+    assert.notEqual(player3After.sessionStart, player3After.sessionEnd, "Player 1 did not have their session end updated as intended")
+
+    assert.equal(endedSessions.has(testPlayer1.steamID), true)
+    assert.equal(endedSessions.has(testPlayer2.steamID), true)
 })

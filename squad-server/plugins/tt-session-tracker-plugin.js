@@ -37,16 +37,23 @@ export default class TTSessionTrackerPlugin extends DiscordBasePlugin {
 
     async mount() {
         this.server.on(ServerEvents.chatMessage, this.onChatMessage)
+
         /** @type {Map<string, Session>} */
         this.playerSessions = new Map()
-        this.sessionLogger = setInterval(async () => {
 
-        }, 30 * 1000)
-        console.log(this.server.players);
-        // this.playerSessions = ""
+        /** @type {Map<string, Session>} */
+        this.endedPlayerSessions = new Map()
+
+        this.sessionLogger = setInterval(async () => {
+            console.log(this.server.players);
+            this.updatePlayerSessions()
+        }, 10 * 1000)
     }
 
-
+    updatePlayerSessions() {
+        this.playerSessions = initializeSessions(this.server.players, this.playerSessions)
+        this.playerSessions = updateSessions(this.server.players, this.playerSessions, this.endedPlayerSessions)
+    }
 
 
 
@@ -65,23 +72,55 @@ export default class TTSessionTrackerPlugin extends DiscordBasePlugin {
 }
 
 /**
- *
- * @param players {Player[]}
- * @param playerSessions {Map<string, Session>}
+ * Initializes player sessions if they don't exist, i.e. when someone has joined the server.
+ * @param playersInServer {Player[]} The players currently in the server
+ * @param playerSessions {Map<string, Session>} The currently set sessions.
  * @return {Map<string, Session>}
  */
-export function initializeSessions(players, playerSessions) {
-    for (const player of players) {
+export function initializeSessions(playersInServer, playerSessions) {
+    /** @type {Map<string, Object>} */
+    const newSessions= structuredClone(playerSessions)
+
+    const date = new Date()
+    for (const player of playersInServer) {
         if (!playerSessions.get(player.steamID)) {
-            playerSessions.set(player.steamID, {
+            newSessions.set(player.steamID, {
                 steamID: player.steamID,
-                sessionStart: new Date()
+                sessionStart: date,
+                sessionEnd: date
             })
+        }
+    }
+
+    return newSessions
+}
+
+/**
+ *
+ * @param playersInServer {Player[]}
+ * @param playerSessions {Map<string, Session>}
+ * @param endedSessions {Map<string, Session>}
+ * @return {Map<string, Session>}
+ */
+export function updateSessions(playersInServer, playerSessions, endedSessions) {
+    for (const [steamID, session] of playerSessions) {
+        const playerInServer = playersInServer.some(player => {
+            return player.steamID === steamID
+        })
+
+        session.sessionEnd = new Date()
+
+        if (!playerInServer) {
+            playerSessions.delete(steamID)
+            endedSessions.set(steamID, session)
         }
     }
 
     return playerSessions
 }
+
+
+
 
 
 /**
