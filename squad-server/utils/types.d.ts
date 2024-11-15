@@ -7,6 +7,12 @@ export type MapData = {
 }
 
 
+export type Session = {
+    steamID: string,
+    sessionStart: Date,
+    sessionEnd?: Date
+}
+
 
 /**
  * Represents the data emitted by the "CHAT_MESSAGE" event on the server object.
