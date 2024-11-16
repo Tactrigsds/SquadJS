@@ -6,7 +6,7 @@ export type RawMapData = {
     factions: string
 }
 
-type MapData = {
+export type MapData = {
     level: string
     layer: string,
     faction1: string,

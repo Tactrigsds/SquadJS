@@ -294,6 +294,43 @@ export default class DBLog extends BasePlugin {
       }
     );
 
+    const sessionData = {
+    schema: {
+        id: {
+          type: DataTypes.INTEGER,
+          primaryKey: true,
+          autoIncrement: true
+        },
+        steamID: {
+            type: DataTypes.STRING,
+            notNull: true,
+        },
+        sessionStart: {
+            type: DataTypes.DATE,
+            notNull: true,
+        },
+        sessionEnd: {
+            type: DataTypes.DATE,
+            notNull: true
+        },
+        seedingTimeSeconds: {
+            type: DataTypes.FLOAT
+        }
+    },
+    options: {
+        timestamps: false,
+        indexes: [
+            {
+                unique: true,
+                fields: ['steamID', 'sessionStart']
+            }
+        ],
+    }
+    }
+
+    this.models.Session = this.options.database.define(`DBLog_Session`, sessionData.schema, sessionData.options)
+
+
     this.createModel(
       'Death',
       {
@@ -400,6 +437,13 @@ export default class DBLog extends BasePlugin {
         collate: 'utf8mb4_unicode_ci'
       }
     );
+
+
+    this.models.Player.hasMany(this.models.Session, {
+        sourceKey: 'steamID',
+        foreignKey: { name: 'steamID', allowNull: false },
+        onDelete: 'CASCADE'
+    })
 
     this.models.Player.hasMany(this.models.PlayerIP, {
         sourceKey: 'steamID',
@@ -534,6 +578,7 @@ export default class DBLog extends BasePlugin {
     await this.models.Death.sync();
     await this.models.Revive.sync();
     await this.models.PlayerIP.sync();
+    await this.models.Session.sync();
   }
 
   async mount() {
