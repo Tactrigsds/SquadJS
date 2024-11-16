@@ -135,6 +135,10 @@ export default class SquadRcon extends Rcon {
     return { level: match[1], layer: match[2], factions: match[3]};
   }
 
+
+  /**
+   * @return {RawMapData}
+   */
   async getNextMap() {
     const response = await this.execute('ShowNextMap');
     const match = response.match(/^Next level is (.*), layer is (.*), factions (.*)/);

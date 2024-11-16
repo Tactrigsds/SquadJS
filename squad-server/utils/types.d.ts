@@ -1,11 +1,19 @@
 
 
-export type MapData = {
+export type RawMapData = {
     level: string,
     layer: string,
     factions: string
 }
 
+type MapData = {
+    level: string
+    layer: string,
+    faction1: string,
+    faction2: string,
+    subfaction1: string | null
+    subfaction2: string | null
+}
 
 export type Session = {
     steamID: string,

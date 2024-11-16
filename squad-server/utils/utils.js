@@ -46,3 +46,21 @@ export async function getFactionsAndSubfactions(mapData) {
     const [team2, subfaction2] = t2.split('+')
     return {faction1: team1, faction2: team2, subfaction1: subfaction1, subfaction2: subfaction2}
 }
+
+/**
+ * Processes the map data that's recieved from RCON into an easily usable object.
+ * Note that in the event that a subfaction is not explicitly set, it will be undefined in this case.
+ *
+ * @param rawMapData {RawMapData}
+ * @returns {MapData}
+ */
+export function processMapData(rawMapData) {
+    const [t1, t2] = rawMapData.factions.split(" ");
+    let [team1, subfaction1] = t1.split('+')
+    let [team2, subfaction2] = t2.split('+')
+
+    if (!subfaction1) subfaction1 = null
+    if (!subfaction2) subfaction2 = null
+
+    return {level: rawMapData.level, layer: rawMapData.level, faction1: team1, faction2: team2, subfaction1: subfaction1, subfaction2: subfaction2}
+}

@@ -16,6 +16,7 @@ import fetchAdminLists from './utils/admin-lists.js';
 
 import { isPlayerID, anyIDToPlayer, anyIDsToPlayers } from './utils/any-id.js';
 import { playerIdNames } from 'core/id-parser';
+import {processMapData} from "./utils/utils.js";
 
 export default class SquadServer extends EventEmitter {
   constructor(options = {}) {
@@ -42,6 +43,13 @@ export default class SquadServer extends EventEmitter {
     this.autoSetLayerOnRoundStart = false
     this.autoRotationEnabled = null;
     this.autoRemovefogOfWar = null;
+
+    /** @type {null | MapData} */
+    this.currentMapData = null;
+
+    /** @type {null | MapData} */
+    this.nextMapData = null;
+
 
     this.players = [];
 
@@ -526,6 +534,10 @@ export default class SquadServer extends EventEmitter {
     try {
       const currentMap = await this.rcon.getCurrentMap();
       const nextMap = await this.rcon.getNextMap();
+
+      this.currentMapData = processMapData(currentMap)
+      this.nextMapData = processMapData(nextMap)
+
       const nextMapToBeVoted = nextMap.layer === 'To be voted';
 
       const currentLayer = await Layers.getLayerById(currentMap.layer);
@@ -760,6 +772,10 @@ export default class SquadServer extends EventEmitter {
   }
 
 
+  async updateMapData() {
+    this.currentMapData = processMapData(await this.rcon.getCurrentMap())
+    this.nextMapData = processMapData(await this.rcon.getNextMap())
+  }
 
   /*
   We will consider Jensen's test range the start of a session. Designed in conjunction with the "persistent history plugin".

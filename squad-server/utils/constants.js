@@ -13,13 +13,13 @@ const COPYRIGHT_MESSAGE = `Powered by SquadJS, Copyright © ${new Date().getFull
 
 export const WARN_MESSAGE_PERSISTENCE_TIME_MS = 6080
 
+
 /**
  * Represents all possible events emitted by the server object.
- * @type {Readonly<{databaseUpdated: string, newGame: string, playerKicked: string, playerCreated: string, possessedAdminCamera: string, unPossessedAdminCamera: string, chatMessage: string, playerConnected: string, roundEnd: string, nextLayerSet: string, playerBanned: string, playerDisconnected: string, playerWarned: string}>}
+ * @type {Readonly<{rconError: string, playerDied: string, newGame: string, deployableDamaged: string, playerKicked: string, possessedAdminCamera: string, roundEnded: string, playerWarned: string, adminBroadcast: string, teamKill: string, databaseUpdated: string, joinSucceeded: string, playerWounded: string, playerCreated: string, playerPossess: string, unPossessedAdminCamera: string, tickRate: string, chatMessage: string, playerConnected: string, playerUnpossess: string, playerDamaged: string, nextLayerSet: string, playerBanned: string, playerDisconnected: string, playerRevived: string}>}
  */
-export const eventsEnum = Object.freeze({
+export const ServerEvents = Object.freeze({
     newGame: 'NEW_GAME',
-    roundEnd: 'ROUND_END',
     roundEnded: 'ROUND_ENDED',
     nextLayerSet: 'MAP_SET',
     chatMessage: 'CHAT_MESSAGE',
@@ -44,7 +44,18 @@ export const eventsEnum = Object.freeze({
     joinSucceeded: 'JOIN_SUCCEEDED',
     tickRate: 'TICK_RATE',
     rconError: 'RCON_ERROR',
-
 });
+
+/**
+ *
+ * @type {Readonly<{AdminChat: string, SquadChat: string, AllChat: string, TeamChat: string}>}
+ */
+export const ChatsEnum = Object.freeze({
+    AdminChat: 'ChatAdmin',
+    AllChat: 'ChatAll',
+    TeamChat: 'TeamChat',
+    SquadChat: 'ChatSquad',
+
+})
 
 export { SQUADJS_VERSION, COPYRIGHT_MESSAGE };
