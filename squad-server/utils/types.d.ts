@@ -18,7 +18,8 @@ type MapData = {
 export type Session = {
     steamID: string,
     sessionStart: Date,
-    sessionEnd?: Date
+    sessionEnd?: Date,
+    seedingTimeSeconds: number
 }
 
 

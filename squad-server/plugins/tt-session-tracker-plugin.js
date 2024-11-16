@@ -22,53 +22,83 @@ export default class TTSessionTrackerPlugin extends DiscordBasePlugin {
     static get optionsSpecification() {
         return {
             ...DiscordBasePlugin.optionsSpecification,
-
+            updateInterval: {
+                required: false,
+                description: "How often the sessions are updated.",
+                default: 30
+            },
+            lowerPlayerCountForSeeding: {
+                required: false,
+                description: "The lower bound of players where the server may be considered in seeding mode.",
+                default: 0
+            },
+            upperPlayerCountForSeeding: {
+                required: false,
+                description: "The upper bound of players for the server to be considered in seeding mode.",
+                default: 60
+            },
+            minimumTimeOnServerForSeeding: {
+                required: false,
+                description: "The minimum amount of time required for a player before it will be counted towards their seeding score."
+            }
         }
     }
 
     constructor(server, options, connectors) {
         super(server, options, connectors);
-        this.onChatMessage = this.onChatMessage.bind(this)
+        this.updatePlayerSessions = this.updatePlayerSessions.bind(this)
     }
 
     async unmount() {
-        this.server.removeEventListener(this.onChatMessage)
+        // this.server.removeEventListener(this.onChatMessage)
     }
 
     async mount() {
-        this.server.on(ServerEvents.chatMessage, this.onChatMessage)
+        // this.server.on(ServerEvents.chatMessage, this.onChatMessage)
 
         /** @type {Map<string, Session>} */
         this.playerSessions = new Map()
 
-        /** @type {Map<string, Session>} */
-        this.endedPlayerSessions = new Map()
+        /** @type {Session[]} */
+        this.endedPlayerSessions = []
+        this.lastUpdate = new Date()
 
+        this.updatePlayerSessions()
         this.sessionLogger = setInterval(async () => {
             console.log(this.server.players);
             this.updatePlayerSessions()
-        }, 10 * 1000)
+        }, 1000 * this.options.updateInterval)
     }
 
     updatePlayerSessions() {
+        this.verbose(3, `Updating player sessions...`)
+        this.currentlySeeding = this.isCurrentlySeeding()
+
+        if (this.currentlySeeding) {
+            this.playerSessions = updateSeedingTimes(this.lastUpdate, new Date(), this.playerSessions)
+        }
+
         this.playerSessions = initializeSessions(this.server.players, this.playerSessions)
         this.playerSessions = updateSessions(this.server.players, this.playerSessions, this.endedPlayerSessions)
+        this.lastUpdate = new Date()
+        // console.log("Active sessions: ", this.playerSessions)
+        // console.log("Ended sessions: ", this.endedPlayerSessions)
     }
 
+    isCurrentlySeeding() {
+        const seedingRegex = /seed|jensen/i
 
+        if (!this.server.currentMapData) return false
+        if (!seedingRegex.test(this.server.currentMapData.layer)) return false
 
+        const pCount = this.server.playerCount
 
-    // /**
-    //  *
-    //  * @param messageEvent {ChatMessageEvent}
-    //  * @return
-    //  */
-    // async onChatMessage(messageEvent) {
-    //     if (messageEvent.chat !== ChatsEnum.AdminChat) return;
-    //     // this.server.players
-    //
-    //     console.log('')
-    // }
+        this.verbose(3, `CurrentlySeeding; pCount: ${pCount}`)
+        this.verbose(3, `CurrentlySeeding; lower pcount for seeding: ${this.options.lowerPlayerCountForSeeding}`)
+        this.verbose(3, `CurrentlySeeding; upper pcount for seeding: ${this.options.upperPlayerCountForSeeding}`)
+
+        return pCount > this.options.lowerPlayerCountForSeeding && pCount <= this.options.upperPlayerCountForSeeding;
+    }
 }
 
 /**
@@ -78,7 +108,7 @@ export default class TTSessionTrackerPlugin extends DiscordBasePlugin {
  * @return {Map<string, Session>}
  */
 export function initializeSessions(playersInServer, playerSessions) {
-    /** @type {Map<string, Object>} */
+    /** @type {Map<string, Session>} */
     const newSessions= structuredClone(playerSessions)
 
     const date = new Date()
@@ -87,7 +117,8 @@ export function initializeSessions(playersInServer, playerSessions) {
             newSessions.set(player.steamID, {
                 steamID: player.steamID,
                 sessionStart: date,
-                sessionEnd: date
+                sessionEnd: date,
+                seedingTimeSeconds: 0
             })
         }
     }
@@ -99,20 +130,22 @@ export function initializeSessions(playersInServer, playerSessions) {
  *
  * @param playersInServer {Player[]}
  * @param playerSessions {Map<string, Session>}
- * @param endedSessions {Map<string, Session>}
+ * @param endedSessions {Session[]}
  * @return {Map<string, Session>}
  */
 export function updateSessions(playersInServer, playerSessions, endedSessions) {
+    const date = new Date()
+
     for (const [steamID, session] of playerSessions) {
         const playerInServer = playersInServer.some(player => {
             return player.steamID === steamID
         })
 
-        session.sessionEnd = new Date()
+        session.sessionEnd = date
 
         if (!playerInServer) {
             playerSessions.delete(steamID)
-            endedSessions.set(steamID, session)
+            endedSessions.push(session)
         }
     }
 
@@ -120,7 +153,21 @@ export function updateSessions(playersInServer, playerSessions, endedSessions) {
 }
 
 
+/**
+ *
+ * @param lastUpdateTime {Date}
+ * @param currentTime {Date}
+ * @param sessions {Map<string, Session>}
+ */
+export function updateSeedingTimes(lastUpdateTime, currentTime, sessions) {
+    const tDelta = currentTime - lastUpdateTime
+    const tDeltaSeconds = tDelta / 1000
 
+    for (const [steamID, session] of sessions) {
+        session.seedingTimeSeconds += tDeltaSeconds
+    }
+    return sessions
+}
 
 
 /**
