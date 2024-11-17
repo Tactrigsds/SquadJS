@@ -22,6 +22,20 @@ export type Session = {
     seedingTimeSeconds: number
 }
 
+export type SessionWithName = {
+    steamID: string,
+    playerName: string,
+    sessionStart: Date,
+    sessionEnd?: Date,
+    seedingTimeSeconds: number
+}
+
+export type TotalSeedingTime = {
+    steamID: string,
+    playerName: string,
+    totalSeedingTimeSeconds: number
+}
+
 
 /**
  * Represents the data emitted by the "CHAT_MESSAGE" event on the server object.
@@ -33,6 +47,23 @@ export type ChatMessageEvent = {
     chat: string,
     player: Player
     time: Date
+}
+
+export type DiscordMessageEvent = {
+    channelId: string,
+    guildId: string,
+    id: string,
+    createdTimestamp: number,
+    type: number,
+    system: boolean,
+    content: string,
+    // TODO add user type here
+    pinned: boolean,
+    tts: boolean,
+    nonce: string,
+    embeds: any[],
+    components: any[],
+
 }
 
 export interface PluginOption {
