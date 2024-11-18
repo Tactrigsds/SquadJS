@@ -1,15 +1,14 @@
-import DiscordBasePlugin from "./discord-base-plugin.js";
 import DBLog from "./db-log.js";
 import {Op} from "sequelize";
 import {bold, Colors, EmbedBuilder, time, TimestampStyles} from "discord.js";
 import {getStartDateOfCurrentMonth, getStartDateOfNextMonth} from "../utils/utils.js";
+import DiscordBaseMessageUpdater from "./discord-base-message-updater.js";
 
 
-export default class TTDiscordSeedLeaderboardUpdater extends DiscordBasePlugin {
+export default class TTDiscordSeedLeaderboardUpdater extends DiscordBaseMessageUpdater {
 
     static get description() {
-        // TODO finish writing this.
-        return ("The<code>Seeding Leaderboard Updater</code>")
+        return ("The<code>Seeding Leaderboard Updater</code> creates messages container the top seeders in a set period. Is designed to work in conjunction with the <code>TTSessionTracker</code> plugin.")
     }
 
 
@@ -20,21 +19,33 @@ export default class TTDiscordSeedLeaderboardUpdater extends DiscordBasePlugin {
 
     static get optionsSpecification() {
         return {
-        ...DiscordBasePlugin.optionsSpecification,
-        channelID: {
-            required: true,
-            description: "The id of the channel to post the leaderboard.",
-            example: "66123456124124"
-        },
+      ...DiscordBaseMessageUpdater.optionsSpecification,
+          command: {
+            required: false,
+            description: 'Command name to get message.',
+            default: '!leaderboard'
+          },
         seedEmoji: {
             required: false,
             description: ""
+        },
+        updateIntervalSeconds: {
+            required: true,
+            description: "How frequently the leaderboards will be updated.",
+            default: 1800
+        },
+        leaderBoardSize: {
+          required: false,
+            description: "The amount of players that will be shown in the leaderboard.",
+            default: 10
         }
     }}
 
     constructor(server, options, connectors) {
         super(server, options, connectors);
+
         this.onDiscordMessage = this.onDiscordMessage.bind(this)
+        this.updateMessages = this.updateMessages.bind(this)
         this.DBLogPlugin = null
     }
 
@@ -43,21 +54,30 @@ export default class TTDiscordSeedLeaderboardUpdater extends DiscordBasePlugin {
         this.DBLogPlugin = this.server.plugins.find(plugin => plugin instanceof DBLog)
         if (!this.DBLogPlugin) {
             this.verbose(1, `Unable to find db log plugin, unmounting.`)
-            return
+            return await this.unmount()
         }
 
-        this.options.discordClient.on('messageCreate', this.onDiscordMessage);
+        await super.mount()
 
-        // /** @type {sequelize.Model} */
         this.sessionSchema = this.DBLogPlugin.models.Session
         this.playerSchema = this.DBLogPlugin.models.Player
         this.matchModel = this.DBLogPlugin.models.Match
 
-        // await this.insertMockSessionData()
+        this.updateInterval = setInterval(this.updateMessages, this.options.updateIntervalSeconds * 1000)
 
-        const leaderBoardEmbeds = await this.createNewLeaderboard()
-        await this.sendDiscordMessage({embeds: leaderBoardEmbeds})
     }
+
+    async unmount() {
+        await super.unmount()
+        clearInterval(this.updateInterval)
+    }
+
+    async generateMessage() {
+        const embeds = await this.createNewLeaderboard()
+
+        return {embeds: embeds}
+    }
+
 
     async createNewLeaderboard() {
         const startOfMonth = getStartDateOfCurrentMonth(new Date())
@@ -72,75 +92,10 @@ export default class TTDiscordSeedLeaderboardUpdater extends DiscordBasePlugin {
         const totalSeedingTimes = getCumulativeSeedingTimes(sessionArray)
         const totalSeedingTimeWithCount = getSessionsWithSeedingCount(totalSeedingTimes, timesSeeded)
 
-        const leaderBoardEmbedByCount = generateLeaderBoardEmbedByCount(totalSeedingTimeWithCount, startOfMonth, startOfNextMonth)
-        const leaderBoardEmbedByTime = generateLeaderboardEmbed(totalSeedingTimes, timesSeeded, startOfMonth, startOfNextMonth)
+        const leaderBoardEmbedByCount = generateLeaderBoardEmbedByCount(totalSeedingTimeWithCount, startOfMonth, startOfNextMonth, this.options.leaderBoardSize)
+        const leaderBoardEmbedByTime = generateLeaderboardEmbed(totalSeedingTimes, timesSeeded, startOfMonth, startOfNextMonth, this.options.leaderBoardSize)
 
         return [leaderBoardEmbedByTime, leaderBoardEmbedByCount]
-    }
-
-
-
-    async unmount() {
-    }
-
-    /**
-     * @param event {DiscordMessageEvent}
-     */
-    async onDiscordMessage(event) {
-        if (event.author.id === this.options.discordClient.user.id) return;
-        if (event.content !== `!topseeders`) return;
-
-        const leaderboard = await this.createNewLeaderboard()
-        event.channel.send({embeds: leaderboard})
-    }
-
-    async insertMockSessionData() {
-        // 1st of January 2024
-        const date = new Date(17040672000)
-        const date2 = new Date(1704777770)
-
-        /** @type {Session} */
-        const mockSession1 = {
-            steamID: "76561198078967157",
-            sessionStart: date,
-            sessionEnd: date2,
-            seedingTimeSeconds: 5
-        }
-
-        /** @type {Session} */
-        const mockSession2 = {
-            steamID: "76561198056422171",
-            sessionStart: new Date() - 1000000,
-            sessionEnd: new Date(),
-            seedingTimeSeconds: 500
-        }
-
-        /** @type {Session} */
-        const mockSession3 = {
-            steamID: '76561198057570564',
-            sessionStart: new Date() - 2450051,
-            sessionEnd: new Date(),
-            seedingTimeSeconds: 100000
-        }
-        /** @type {Session} */
-        const mockSession4 = {
-            steamID: '76561198014300329',
-            sessionStart: new Date() - 245004,
-            sessionEnd: new Date(),
-            seedingTimeSeconds: 56431
-        }
-
-        this.verbose(3, `Succesfully inserted test data...`)
-        try {
-            await this.sessionSchema.upsert(mockSession1)
-            await this.sessionSchema.upsert(mockSession2)
-            await this.sessionSchema.upsert(mockSession3)
-            await this.sessionSchema.upsert(mockSession4)
-            this.verbose(3, `Succesfully inserted mock sessions...`)
-            // this.verbose(3, 'Sessions: ', mockSession1, mockSession2, mockSession3)
-        } catch (e) {
-            this.verbose(1, `Error occurred when inserting data`, e)
-        }
     }
 }
 
@@ -178,7 +133,7 @@ function getSessionsWithSeedingCount(totalSeedingTimeMap, timesSeeded) {
     const tempSeedingTimesArray = Array.from(totalSeedingTimeMap.values())
 
     /** @type {TotalSeedingTimeWithDays[]} */
-    let playerSeedingTimes = tempSeedingTimesArray.map(player => {
+    const playerSeedingTimes = tempSeedingTimesArray.map(player => {
         let seedingCount = timesSeeded.get(player.steamID)
         if (!seedingCount) {
             seedingCount = 0
@@ -199,14 +154,16 @@ function getSessionsWithSeedingCount(totalSeedingTimeMap, timesSeeded) {
  * @param timesSeeded {Map<string, number>}
  * @param startTime {Date}
  * @param endTime {Date}
+ * @param leaderboardSize {number}
+ * @return {EmbedBuilder}
  */
-function generateLeaderboardEmbed(totalSeedingTimeMap, timesSeeded, startTime, endTime) {
+function generateLeaderboardEmbed(totalSeedingTimeMap, timesSeeded, startTime, endTime, leaderboardSize) {
     // Retrieve the top 25 seeders in terms of total time.
     /** @type {TotalSeedingTime[]} */
     let playerSeedingTimes = Array.from(totalSeedingTimeMap.values())
 
     playerSeedingTimes = playerSeedingTimes.sort((a, b) => (Math.round(b.totalSeedingTimeSeconds) - Math.round(a.totalSeedingTimeSeconds)))
-    playerSeedingTimes = playerSeedingTimes.slice(0, 25)
+    playerSeedingTimes = playerSeedingTimes.slice(0, leaderboardSize)
 
     const playerNames = playerSeedingTimes.map((player, i) => {
         return `${i+1}). ${player.playerName.trim()}`
@@ -248,9 +205,12 @@ function generateLeaderboardEmbed(totalSeedingTimeMap, timesSeeded, startTime, e
  * @param playerSeedingTimesWithCount {TotalSeedingTimeWithDays[]}
  * @param startTime {Date}
  * @param endTime {Date}
+ * @param leaderboardSize {number}
+ * @return {EmbedBuilder}
  */
-function generateLeaderBoardEmbedByCount(playerSeedingTimesWithCount, startTime, endTime) {
-    playerSeedingTimesWithCount.sort((a, b) => a.seedingCount - b.seedingCount)
+function generateLeaderBoardEmbedByCount(playerSeedingTimesWithCount, startTime, endTime, leaderboardSize) {
+    playerSeedingTimesWithCount.sort((a, b) => b.seedingCount - a.seedingCount)
+    playerSeedingTimesWithCount = playerSeedingTimesWithCount.slice(0, leaderboardSize)
 
     const playerNames = playerSeedingTimesWithCount.map((player, i) => {
         return `${i+1}). ${player.playerName.trim()}`
@@ -264,8 +224,8 @@ function generateLeaderBoardEmbedByCount(playerSeedingTimesWithCount, startTime,
         return player.steamID
     })
 
-    const dateString = `${bold(`👑 Top seeders in the period by count 🌱`)}`
-
+    let dateString = `${bold(`👑 Top seeders in the period by count 🌱`)}\n`
+    // dateString += bold(`A "time" is defined as the server running from Jensens-to-jensens`)
 
     const embed = new EmbedBuilder()
         .setColor(Colors.DarkGreen)
@@ -275,7 +235,7 @@ function generateLeaderBoardEmbedByCount(playerSeedingTimesWithCount, startTime,
     embed.addFields([
         { name: 'Name', value: playerNames.join('\n'), inline: true},
         { name: 'SteamID', value: steamIDs.join('\n'), inline: true},
-        { name: 'Days seeded', value: seedingCount.join('\n'), inline: true},
+        { name: 'Times Seeding', value: seedingCount.join('\n'), inline: true},
     ])
     return embed
 }
@@ -379,6 +339,7 @@ function splitMatchDataToSessions(matches) {
  *
  * @param matchChunks {DBMatch[][]}
  * @param playerSessions {SessionWithName[]}
+ * @return {Map<string, number>}
  */
 function retrieveDaysSeeded(matchChunks, playerSessions) {
     const minSeedingTimeInSession = 1800
