@@ -36,6 +36,38 @@ export type TotalSeedingTime = {
     totalSeedingTimeSeconds: number
 }
 
+export type DBPlayer = {
+    steamID: string,
+    lastName: string
+}
+
+export type DBMatch = {
+    id: number,
+    dlc: string,
+    mapClassname: string,
+    layerClassname: string
+    map: string,
+    layer: string,
+    startTime: Date,
+    endTime: ?Date,
+    tickets: ?string
+    winner: ?string
+    team1: ?string
+    team2: ?string
+    team1Short: ?string
+    team2Short: ?string
+    subfactionTeam1: ?string
+    subfactionTeam2: ?string
+    subfactionShortTeam1: ?string
+    subfactionShortTeam2: ?string
+    winnerTeam: ?string
+    winnerTeamID: ?number
+    isDraw: ?boolean
+    server: number
+}
+
+
+
 
 /**
  * Represents the data emitted by the "CHAT_MESSAGE" event on the server object.
@@ -48,6 +80,10 @@ export type ChatMessageEvent = {
     player: Player
     time: Date
 }
+
+/**
+ * Represents the data emitted by a discord message event.
+ */
 
 export type DiscordMessageEvent = {
     channelId: string,

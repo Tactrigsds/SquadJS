@@ -3,6 +3,7 @@ import DBLog from "./db-log.js";
 import sequelize, {Op} from "sequelize";
 import {bold, Colors, EmbedBuilder, embedLength, time, TimestampStyles} from "discord.js";
 import {ServerEvents} from "../utils/constants.js";
+import {getStartDateOfCurrentMonth, getStartDateOfNextMonth} from "../utils/utils.js";
 
 
 export default class TTDiscordSeedLeaderboardUpdater extends DiscordBasePlugin {
@@ -51,30 +52,48 @@ export default class TTDiscordSeedLeaderboardUpdater extends DiscordBasePlugin {
         // /** @type {sequelize.Model} */
         this.sessionSchema = this.DBLogPlugin.models.Session
         this.playerSchema = this.DBLogPlugin.models.Player
-
-        await this.insertTestData()
-
-        this.verbose(4, "DB session", this.sessionSchema)
-        const startOfMonth = getDateTimeOfCurrentMonth(new Date())
+        this.matchModel = this.DBLogPlugin.models.Match
+        const startOfMonth = getStartDateOfCurrentMonth(new Date())
+        const startOfNextMonth = getStartDateOfNextMonth(new Date())
         this.verbose(4, "Start of month timestamp", startOfMonth)
+
+        // await this.insertMockSessionData()
+
         const sessionArray = await getAllSessionsSinceDate(startOfMonth, this.sessionSchema, this.playerSchema)
+        const matches = await getAllMatchesSinceDate(startOfMonth, this.matchModel)
+        const matchChunks = splitMatchDataToSessions(matches)
+
+
+
         this.totalSeedingTimes = processSeedingTimes(sessionArray)
-        const leaderboardEmbeds = generateLeaderboardEmbed(this.totalSeedingTimes, startOfMonth)
+        const leaderboardEmbeds = generateLeaderboardEmbed(this.totalSeedingTimes, startOfMonth, startOfNextMonth)
         await this.sendDiscordMessage({embeds: leaderboardEmbeds})
     }
+
+    async createNewLeaderboard() {
+        const startOfMonth = getStartDateOfCurrentMonth(new Date())
+        const sessionArray = await getAllSessionsSinceDate(startOfMonth, this.sessionSchema, this.playerSchema)
+        this.totalSeedingTimes = processSeedingTimes(sessionArray)
+        return generateLeaderboardEmbed(this.totalSeedingTimes, startOfMonth)
+    }
+
+
 
     async unmount() {
     }
 
     /**
-     *
      * @param event {DiscordMessageEvent}
      */
     async onDiscordMessage(event) {
-        // console.log(event)
+        if (event.author.id === this.options.discordClient.user.id) return;
+        if (event.content !== `!topseeders`) return;
+
+        const leaderboard = await this.createNewLeaderboard()
+        event.channel.send({embeds: leaderboard})
     }
 
-    async insertTestData() {
+    async insertMockSessionData() {
         // 1st of January 2024
         const date = new Date(17040672000)
         const date2 = new Date(1704777770)
@@ -150,14 +169,14 @@ function processSeedingTimes(sessionArray) {
 }
 
 /**
- *
- * @param totalSeedingtimeMap {Map<string, TotalSeedingTime>}
+ * @param totalSeedingTimeMap {Map<string, TotalSeedingTime>}
  * @param startTime {Date}
+ * @param endTime {Date}
  */
-function generateLeaderboardEmbed(totalSeedingtimeMap, startTime) {
-    // get top 25 seeders
+function generateLeaderboardEmbed(totalSeedingTimeMap, startTime, endTime) {
+    // Retrieve the top 25 seeders in terms of total time.
     /** @type {TotalSeedingTime[]} */
-    let sessionTimeArray = Array.from(totalSeedingtimeMap.values())
+    let sessionTimeArray = Array.from(totalSeedingTimeMap.values())
     sessionTimeArray = sessionTimeArray.sort((a, b) => (Math.round(b.totalSeedingTimeSeconds) - Math.round(a.totalSeedingTimeSeconds)))
     sessionTimeArray = sessionTimeArray.slice(0, 25)
 
@@ -173,10 +192,10 @@ function generateLeaderboardEmbed(totalSeedingtimeMap, startTime) {
         return player.steamID
     })
 
-    const dateString = `${bold(`Top seeders in the period:`)} ${time(startTime, TimestampStyles.ShortDate)} to ${time(new Date(), TimestampStyles.ShortDate)}`
+    const dateString = `${bold(`👑 Top seeders in the period:`)} ${time(startTime, TimestampStyles.ShortDate)} to ${time(endTime, TimestampStyles.ShortDate)}`
 
     const embed = new EmbedBuilder()
-        .setTitle('Seeding leaderboards for [TT] TacTrig 👑')
+        .setTitle('Seeding leaderboards for [TT] TacTrig')
         .setColor(Colors.DarkGreen)
         .setDescription(dateString)
         .setTimestamp(new Date())
@@ -187,9 +206,8 @@ function generateLeaderboardEmbed(totalSeedingtimeMap, startTime) {
         { name: 'Minutes Spent Seeding', value: minutesOfSeeding.join('\n'), inline: true},
     ])
 
-    // TODO need handling in the case that an embed becomes too long.
-    console.log('Embed length: ', JSON.stringify(embed.toJSON()).length);
 
+    // TODO need handling in the case that an embed becomes too long.
     return [embed]
 }
 
@@ -200,7 +218,8 @@ function generateLeaderboardEmbed(totalSeedingtimeMap, startTime) {
  * Retrieves all sessions ocurring after the given start time, includes playernames.
  *
  * @param startTime {Date}
- * @param sessionModel sequelize model.
+ * @param sessionModel Session sequelize model.
+ * @param userModel User sequelize model
  * @return {SessionWithName[]}
  */
 async function getAllSessionsSinceDate(startTime, sessionModel, userModel) {
@@ -243,32 +262,50 @@ async function getAllSessionsSinceDate(startTime, sessionModel, userModel) {
  *
  * @param date {Date}
  * @param matchModel
- * @return {Promise<void>}
+ * @returns {DBMatch[]}
  */
 async function getAllMatchesSinceDate(date, matchModel) {
+    let matches = await matchModel.findAll({
+        where: {
+            startTime: {
+                [Op.gte]: date
+            }
+        }
+    })
 
-
-
+    /** @type {DBMatch[]} */
+    matches = matches.map(match => match.dataValues)
+    return matches
 }
 
 
+/**
+ * Splits the matches into chunks/"days", currently defined by Jensen's being the start of a day.
+ * @param matches {DBMatch[]}
+ * @return {DBMatch[][]}
+ */
+function splitMatchDataToSessions(matches) {
+    // Split matches into chunks, where a chunk is started by being on jensens or on a seed map.
 
+    const sessionStartMapRegex = /.*jensen/i
 
+    /** @type {DBMatch[][]} */
+    const matchChunks = []
 
+    /** @type {DBMatch[]} */
+    let currentChunk = []
+    for (const match of matches) {
+        if (!sessionStartMapRegex.test(match.layerClassname)) {
+            currentChunk.push(match)
+        } else {
+            matchChunks.push(currentChunk)
+            currentChunk = [match]
+        }
+    }
+    matchChunks.push(currentChunk)
 
-
-
-
-
-
-
-
-
-
-
-function getDateTimeOfCurrentMonth(date = new Date) {
-    // Retrieves a DateTime object that starts at the beginning of the current month
-    return new Date(date.getFullYear(), date.getMonth(), 1, 1)
+    return matchChunks
 }
+
 
 

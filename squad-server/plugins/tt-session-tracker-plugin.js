@@ -24,7 +24,7 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
             sessionCacheInterval: {
                 required: false,
                 description: "How often the sessions are updated.",
-                default: 30
+                default: 10
             },
             dbUpdateInterval: {
                 required: false,
@@ -46,11 +46,11 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
                 description: "The minimum amount of time in seconds required for a player before it will be counted towards their seeding score.",
                 default: 1800
             },
-            sessionResumptionEnabled: {
-                required: false,
-                description: "",
-                default: true
-            },
+            // sessionResumptionEnabled: {
+            //     required: false,
+            //     description: "Whether the plugin will resume sessions that were running prior to a event causing SquadJS to stop, or if a player disconnected.",
+            //     default: true
+            // },
             disconnectGracePeriodSeconds: {
                 required: false,
                 description: "The amount of seconds before a session is considered ended, and a new one will be stored if the player disconnects.",
@@ -63,7 +63,9 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
         super(server, options, connectors);
         this.updateAndSaveSessions = this.updateAndSaveSessions.bind(this)
         this.updateAndRestartSessionUpdate = this.updateAndRestartSessionUpdate.bind(this)
-        this.debug = true
+        this.onPlayerDisconnected = this.onPlayerDisconnected.bind(this)
+        this.onPlayerConnected = this.onPlayerConnected.bind(this)
+        this.debug = false
     }
 
     async unmount() {
@@ -84,29 +86,52 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
                 for (const session of this.playerSessions.values()) {
                     await this.debugSendSessionDataToPlayer(session)
                 }
-            }, 15 * 1000)
-        }
-
-        /** @type {Map<string, Session>} */
-        this.playerSessions = new Map()
+            },
+        8 * 1000)}
 
         /** @type {Session[]} */
         this.endedPlayerSessions = []
+
+        /** @type {Map<string, Session>} */
+        this.playerSessions = initializeSessions(this.server.players, new Map())
+
         this.lastUpdate = new Date()
+
 
         // Periodically update the session cache.
         this.sessionLogger = setInterval(async () => {
             await this.updateAndSaveSessions()
         }, 1000 * this.options.sessionCacheInterval)
 
+
         // Periodically updates the DB with the sessions stored in cache/map.
         this.dbUpdater = setInterval(async () => {
             await this.logSessionsToDB(this.playerSessions)
         }, 1000 * this.options.dbUpdateInterval)
 
-        this.server.on(ServerEvents.playerConnected, this.updateAndRestartSessionUpdate)
-        this.server.on(ServerEvents.playerDisconnected, this.updateAndRestartSessionUpdate)
+
+        this.server.on(ServerEvents.playerConnected, this.onPlayerConnected)
+        this.server.on(ServerEvents.playerDisconnected, this.onPlayerDisconnected)
     }
+
+    async onPlayerConnected() {
+        this.verbose(3, `Player connected, updating sessions cache...`)
+
+        await this.updateAndSaveSessions()
+        this.sessionLogger = setInterval(async () => {
+            await this.updateAndSaveSessions()
+        }, 1000 * this.options.sessionCacheInterval)
+    }
+
+    async onPlayerDisconnected() {
+        this.verbose(3, `Player disconnected, updating sessions cache...`)
+
+        await this.updateAndSaveSessions()
+        this.sessionLogger = setInterval(async () => {
+            await this.updateAndSaveSessions()
+        }, 1000 * this.options.sessionCacheInterval)
+    }
+
 
     async updateAndRestartSessionUpdate() {
         await this.updateAndSaveSessions()
@@ -117,6 +142,8 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
 
 
     /**
+     *
+     * // TODO currently buggy, creates a large desync in the actual seeding time to the reported one.
      * Resumes sessions stored in the DB if they were ended recently enough.
      * @param model
      * @param playerSessions {Map<string, Session>}
@@ -164,15 +191,16 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
         this.verbose(3, `Updating player sessions...`)
 
         this.playerSessions = initializeSessions(this.server.players, this.playerSessions)
-        await this.resumeSessions(this.DBLogPlugin.models.Session, this.playerSessions, this.options.disconnectGracePeriodSeconds)
+        // await this.resumeSessions(this.DBLogPlugin.models.Session, this.playerSessions, this.options.disconnectGracePeriodSeconds)
 
         const currentlySeeding = this.isCurrentlySeeding()
         this.verbose(4, 'Is currently seeding: ', currentlySeeding)
+
         if (currentlySeeding) {
             this.playerSessions = updateSeedingTimes(this.lastUpdate, new Date(), this.playerSessions)
         }
 
-        this.playerSessions = updateSessions(this.server.players, this.playerSessions, this.endedPlayerSessions)
+        this.playerSessions = updateSessions(this.server.players, this.playerSessions, this.endedPlayerSessions, this.lastUpdate, currentlySeeding)
 
         this.lastUpdate = new Date()
     }
@@ -189,7 +217,7 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
         this.verbose(3, `CurrentlySeeding; lower pcount for seeding: ${this.options.lowerPlayerCountForSeeding}`)
         this.verbose(3, `CurrentlySeeding; upper pcount for seeding: ${this.options.upperPlayerCountForSeeding}`)
 
-        return pCount > this.options.lowerPlayerCountForSeeding && pCount <= this.options.upperPlayerCountForSeeding;
+        return this.options.lowerPlayerCountForSeeding < pCount && pCount <= this.options.upperPlayerCountForSeeding;
     }
 
     async logSessionsToDB(sessions) {
@@ -222,7 +250,7 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
 
     /**
      * Utility function to create or update a session to the DB.
-     * @param model {Model} Databasa model/schema.
+     * @param model {ModelCtor<Model>} Databasa model/schema.
      * @param session {Session}
      */
     async uploadSession(model, session) {
@@ -239,6 +267,7 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
 
 /**
  * Initializes player sessions if they don't exist, i.e. when someone has joined the server.
+ *
  * @param playersInServer {Player[]} The players currently in the server
  * @param sessions {Map<string, Session>} The currently set sessions
  * @return {Map<string, Session>} A map of sessions
@@ -263,23 +292,24 @@ export function initializeSessions(playersInServer, sessions) {
 }
 
 /**
+ *  Updates the sessionEnd field, and removes players no longer in the server from the session map.
  *
- * Updates the sessionEnd field, and removes players no longer in the server from the session map.
  * @param playersInServer {Player[]} Players currently in the server
  * @param sessions {Map<string, Session>} Current sessions
  * @param endedSessions {Session[]} Array of sessions already ended
  * @return {Map<string, Session>} Updated sessions
  */
 export function updateSessions(playersInServer, sessions, endedSessions) {
-    const date = new Date()
+    const currentTime = new Date()
 
     for (const [steamID, session] of sessions) {
         const playerInServer = playersInServer.some(player => {
             return player.steamID === steamID
         })
 
-        session.sessionEnd = date
+        session.sessionEnd = currentTime
 
+        // Remove players no longer in the server.
         if (!playerInServer) {
             sessions.delete(steamID)
             endedSessions.push(session)

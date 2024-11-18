@@ -9,6 +9,16 @@ export function getRandomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+export function getStartDateOfCurrentMonth(date = new Date()) {
+    // Retrieves a DateTime object that starts at the beginning of the current month
+    return new Date(date.getFullYear(), date.getMonth(), 1, 1)
+}
+
+export function getStartDateOfNextMonth(date = new Date()) {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 1, 1)
+}
+
+
 
 export function getFormattedDateForFile(date = new Date()) {
     const paddedMonth = `${date.getUTCMonth() + 1}`.padStart(2, '0')
@@ -62,5 +72,5 @@ export function processMapData(rawMapData) {
     if (!subfaction1) subfaction1 = null
     if (!subfaction2) subfaction2 = null
 
-    return {level: rawMapData.level, layer: rawMapData.level, faction1: team1, faction2: team2, subfaction1: subfaction1, subfaction2: subfaction2}
+    return {level: rawMapData.level, layer: rawMapData.layer, faction1: team1, faction2: team2, subfaction1: subfaction1, subfaction2: subfaction2}
 }
