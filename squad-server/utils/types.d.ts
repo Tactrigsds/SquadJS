@@ -30,11 +30,18 @@ export type SessionWithName = {
     seedingTimeSeconds: number
 }
 
-export type TotalSeedingTime = {
+
+
+export interface TotalSeedingTime {
     steamID: string,
     playerName: string,
     totalSeedingTimeSeconds: number
 }
+
+export interface TotalSeedingTimeWithDays extends TotalSeedingTime {
+    seedingCount: number
+}
+
 
 export type DBPlayer = {
     steamID: string,

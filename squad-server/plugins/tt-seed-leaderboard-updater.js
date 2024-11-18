@@ -1,8 +1,7 @@
 import DiscordBasePlugin from "./discord-base-plugin.js";
 import DBLog from "./db-log.js";
-import sequelize, {Op} from "sequelize";
-import {bold, Colors, EmbedBuilder, embedLength, time, TimestampStyles} from "discord.js";
-import {ServerEvents} from "../utils/constants.js";
+import {Op} from "sequelize";
+import {bold, Colors, EmbedBuilder, time, TimestampStyles} from "discord.js";
 import {getStartDateOfCurrentMonth, getStartDateOfNextMonth} from "../utils/utils.js";
 
 
@@ -53,28 +52,30 @@ export default class TTDiscordSeedLeaderboardUpdater extends DiscordBasePlugin {
         this.sessionSchema = this.DBLogPlugin.models.Session
         this.playerSchema = this.DBLogPlugin.models.Player
         this.matchModel = this.DBLogPlugin.models.Match
-        const startOfMonth = getStartDateOfCurrentMonth(new Date())
-        const startOfNextMonth = getStartDateOfNextMonth(new Date())
-        this.verbose(4, "Start of month timestamp", startOfMonth)
 
         // await this.insertMockSessionData()
 
-        const sessionArray = await getAllSessionsSinceDate(startOfMonth, this.sessionSchema, this.playerSchema)
-        const matches = await getAllMatchesSinceDate(startOfMonth, this.matchModel)
-        const matchChunks = splitMatchDataToSessions(matches)
-
-
-
-        this.totalSeedingTimes = processSeedingTimes(sessionArray)
-        const leaderboardEmbeds = generateLeaderboardEmbed(this.totalSeedingTimes, startOfMonth, startOfNextMonth)
-        await this.sendDiscordMessage({embeds: leaderboardEmbeds})
+        const leaderBoardEmbeds = await this.createNewLeaderboard()
+        await this.sendDiscordMessage({embeds: leaderBoardEmbeds})
     }
 
     async createNewLeaderboard() {
         const startOfMonth = getStartDateOfCurrentMonth(new Date())
+        const startOfNextMonth = getStartDateOfNextMonth(new Date())
+
         const sessionArray = await getAllSessionsSinceDate(startOfMonth, this.sessionSchema, this.playerSchema)
-        this.totalSeedingTimes = processSeedingTimes(sessionArray)
-        return generateLeaderboardEmbed(this.totalSeedingTimes, startOfMonth)
+
+        const matches = await getAllMatchesSinceDate(startOfMonth, this.matchModel)
+        const matchChunks = splitMatchDataToSessions(matches)
+        const timesSeeded = retrieveDaysSeeded(matchChunks, sessionArray)
+
+        const totalSeedingTimes = getCumulativeSeedingTimes(sessionArray)
+        const totalSeedingTimeWithCount = getSessionsWithSeedingCount(totalSeedingTimes, timesSeeded)
+
+        const leaderBoardEmbedByCount = generateLeaderBoardEmbedByCount(totalSeedingTimeWithCount, startOfMonth, startOfNextMonth)
+        const leaderBoardEmbedByTime = generateLeaderboardEmbed(totalSeedingTimes, timesSeeded, startOfMonth, startOfNextMonth)
+
+        return [leaderBoardEmbedByTime, leaderBoardEmbedByCount]
     }
 
 
@@ -148,7 +149,7 @@ export default class TTDiscordSeedLeaderboardUpdater extends DiscordBasePlugin {
  * @param sessionArray {SessionWithName[]}
  * @return {Map<string, TotalSeedingTime>}
  */
-function processSeedingTimes(sessionArray) {
+function getCumulativeSeedingTimes(sessionArray) {
     /** @type {Map<string, TotalSeedingTime>} */
     const totalSessionTimeMap = new Map()
 
@@ -170,32 +171,103 @@ function processSeedingTimes(sessionArray) {
 
 /**
  * @param totalSeedingTimeMap {Map<string, TotalSeedingTime>}
+ * @param timesSeeded {Map<string, number>}
+ * @returns {TotalSeedingTimeWithDays[]}
+ */
+function getSessionsWithSeedingCount(totalSeedingTimeMap, timesSeeded) {
+    const tempSeedingTimesArray = Array.from(totalSeedingTimeMap.values())
+
+    /** @type {TotalSeedingTimeWithDays[]} */
+    let playerSeedingTimes = tempSeedingTimesArray.map(player => {
+        let seedingCount = timesSeeded.get(player.steamID)
+        if (!seedingCount) {
+            seedingCount = 0
+        }
+        return {
+            steamID: player.steamID,
+            playerName: player.playerName,
+            totalSeedingTimeSeconds: player.totalSeedingTimeSeconds,
+            seedingCount: seedingCount
+    }})
+
+    return playerSeedingTimes
+}
+
+
+/**
+ * @param totalSeedingTimeMap {Map<string, TotalSeedingTime>}
+ * @param timesSeeded {Map<string, number>}
  * @param startTime {Date}
  * @param endTime {Date}
  */
-function generateLeaderboardEmbed(totalSeedingTimeMap, startTime, endTime) {
+function generateLeaderboardEmbed(totalSeedingTimeMap, timesSeeded, startTime, endTime) {
     // Retrieve the top 25 seeders in terms of total time.
     /** @type {TotalSeedingTime[]} */
-    let sessionTimeArray = Array.from(totalSeedingTimeMap.values())
-    sessionTimeArray = sessionTimeArray.sort((a, b) => (Math.round(b.totalSeedingTimeSeconds) - Math.round(a.totalSeedingTimeSeconds)))
-    sessionTimeArray = sessionTimeArray.slice(0, 25)
+    let playerSeedingTimes = Array.from(totalSeedingTimeMap.values())
 
-    const playerNames = sessionTimeArray.map((player, i) => {
+    playerSeedingTimes = playerSeedingTimes.sort((a, b) => (Math.round(b.totalSeedingTimeSeconds) - Math.round(a.totalSeedingTimeSeconds)))
+    playerSeedingTimes = playerSeedingTimes.slice(0, 25)
+
+    const playerNames = playerSeedingTimes.map((player, i) => {
         return `${i+1}). ${player.playerName.trim()}`
     })
 
-    const minutesOfSeeding = sessionTimeArray.map(player => {
+    const minutesOfSeeding = playerSeedingTimes.map(player => {
         return Math.round(player.totalSeedingTimeSeconds / 60)
     })
 
-    const steamIDs = sessionTimeArray.map(player => {
+    const steamIDs = playerSeedingTimes.map(player => {
         return player.steamID
     })
 
-    const dateString = `${bold(`👑 Top seeders in the period:`)} ${time(startTime, TimestampStyles.ShortDate)} to ${time(endTime, TimestampStyles.ShortDate)}`
+    const lastFieldString = minutesOfSeeding.join(' mins\n') + ' mins'
+
+    // const dateString = `${bold(`👑 Top seeders in the period by time:`)} ${time(startTime, TimestampStyles.ShortDate)} to ${time(endTime, TimestampStyles.ShortDate)}`
+    let dateString = `${bold(`Current period: `)} ${time(startTime, TimestampStyles.ShortDate)} to ${time(endTime, TimestampStyles.ShortDate)}\n`
+    dateString += `${bold(`👑 Top seeders in the period by time 🌱`)}`
 
     const embed = new EmbedBuilder()
         .setTitle('Seeding leaderboards for [TT] TacTrig')
+        .setColor(Colors.DarkGreen)
+        .setDescription(dateString)
+        // .setTimestamp(new Date())
+
+
+    embed.addFields([
+        { name: 'Name', value: playerNames.join('\n'), inline: true},
+        { name: 'SteamID', value: steamIDs.join('\n'), inline: true},
+        { name: 'Minutes Seeding', value: lastFieldString, inline: true},
+    ])
+
+    return embed
+}
+
+
+/**
+ *
+ * @param playerSeedingTimesWithCount {TotalSeedingTimeWithDays[]}
+ * @param startTime {Date}
+ * @param endTime {Date}
+ */
+function generateLeaderBoardEmbedByCount(playerSeedingTimesWithCount, startTime, endTime) {
+    playerSeedingTimesWithCount.sort((a, b) => a.seedingCount - b.seedingCount)
+
+    const playerNames = playerSeedingTimesWithCount.map((player, i) => {
+        return `${i+1}). ${player.playerName.trim()}`
+    })
+
+    const seedingCount = playerSeedingTimesWithCount.map(player => {
+        return player.seedingCount
+    })
+
+    const steamIDs = playerSeedingTimesWithCount.map(player => {
+        return player.steamID
+    })
+
+    const dateString = `${bold(`👑 Top seeders in the period by count 🌱`)}`
+
+
+    const embed = new EmbedBuilder()
         .setColor(Colors.DarkGreen)
         .setDescription(dateString)
         .setTimestamp(new Date())
@@ -203,15 +275,10 @@ function generateLeaderboardEmbed(totalSeedingTimeMap, startTime, endTime) {
     embed.addFields([
         { name: 'Name', value: playerNames.join('\n'), inline: true},
         { name: 'SteamID', value: steamIDs.join('\n'), inline: true},
-        { name: 'Minutes Spent Seeding', value: minutesOfSeeding.join('\n'), inline: true},
+        { name: 'Days seeded', value: seedingCount.join('\n'), inline: true},
     ])
-
-
-    // TODO need handling in the case that an embed becomes too long.
-    return [embed]
+    return embed
 }
-
-
 
 
 /**
@@ -237,20 +304,20 @@ async function getAllSessionsSinceDate(startTime, sessionModel, userModel) {
             required: true
         }]
     })
-        .then(s => s.map(v => v.dataValues))
+        .then(session => session.map(v => v.dataValues))
         .catch(err => {
             console.error(`Error occured when retrieving sessions...\n`, err)
             return []
         })
 
     /** @type {SessionWithName[]} */
-    sessions = sessions.map(element => {
+    sessions = sessions.map(elem => {
         return {
-            steamID: element.steamID,
-            playerName: element.DBLog_Player?.dataValues.lastName,
-            sessionStart: element.sessionStart,
-            sessionEnd: element.sessionEnd,
-            seedingTimeSeconds: element.seedingTimeSeconds
+            steamID: elem.steamID,
+            playerName: elem.DBLog_Player?.dataValues.lastName,
+            sessionStart: elem.sessionStart,
+            sessionEnd: elem.sessionEnd,
+            seedingTimeSeconds: elem.seedingTimeSeconds
         }
     })
 
@@ -308,4 +375,52 @@ function splitMatchDataToSessions(matches) {
 }
 
 
+/**
+ *
+ * @param matchChunks {DBMatch[][]}
+ * @param playerSessions {SessionWithName[]}
+ */
+function retrieveDaysSeeded(matchChunks, playerSessions) {
+    const minSeedingTimeInSession = 1800
+    /** @type {Map<string, number>} */
+    const timesSeeded = new Map()
+
+    for (const chunk of matchChunks) {
+        /** @type {Map<string, number>} */
+        const seedingTimeInChunk = new Map()
+
+        const lastElem = chunk[chunk.length - 1]
+
+        const startTimeOfChunk = chunk[0].startTime
+        const endTimeOfChunk = lastElem?.endTime ? lastElem.endTime : lastElem.startTime
+
+        for (const session of playerSessions) {
+            if (session.sessionStart <= startTimeOfChunk && session.sessionStart <= endTimeOfChunk) {
+                let userSeedingTime = seedingTimeInChunk.get(session.steamID)
+                if (userSeedingTime) {
+                    userSeedingTime += session.seedingTimeSeconds
+                    seedingTimeInChunk.set(session.steamID, userSeedingTime)
+                } else {
+                    seedingTimeInChunk.set(session.steamID, session.seedingTimeSeconds)
+                }
+            }
+        }
+
+        for (const [steamID, seedingTime] of seedingTimeInChunk) {
+            if (seedingTime < minSeedingTimeInSession) {
+                continue;
+            }
+
+            let player = timesSeeded.get(steamID)
+            if (player) {
+                player += 1
+                timesSeeded.set(steamID, player)
+            } else {
+                timesSeeded.set(steamID, 1)
+            }
+        }
+    }
+
+    return timesSeeded
+}
 
