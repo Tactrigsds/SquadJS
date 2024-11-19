@@ -226,14 +226,24 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
 
         for (const session of sessions.values()) {
             this.verbose(2, `Adding session to DB: `, session)
-            await this.uploadSession(sessionDB, session)
+            try {
+                await this.uploadSession(sessionDB, session)
+            } catch (err) {
+                this.verbose(3, 'error when uploading sessions', err)
+            }
         }
 
         // Upload final data of ended sessions.
         this.verbose(2, `Updating ended sessions...`)
         for (const session of this.endedPlayerSessions) {
             this.verbose(3, `Uploading sessions`, session)
-            await this.uploadSession(sessionDB, session)
+
+            try {
+                await this.uploadSession(sessionDB, session)
+            } catch (err) {
+                this.verbose(3, 'Error when uploading ended session to DB, ', err)
+            }
+
             this.endedPlayerSessions.shift()
         }
     }
@@ -250,7 +260,7 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
 
     /**
      * Utility function to create or update a session to the DB.
-     * @param model {ModelCtor<Model>} Databasa model/schema.
+     * @param model {ModelCtor<Model>} Database model/schema.
      * @param session {Session}
      */
     async uploadSession(model, session) {
