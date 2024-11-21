@@ -44,6 +44,7 @@ export const ServerEvents = Object.freeze({
     joinSucceeded: 'JOIN_SUCCEEDED',
     tickRate: 'TICK_RATE',
     rconError: 'RCON_ERROR',
+    periodEnded: 'PERIOD_ENDED'
 });
 
 /**

@@ -9,13 +9,32 @@ export function getRandomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-export function getStartDateOfCurrentMonth(date = new Date()) {
+export function getUTCStartDateOfCurrentMonth(date = new Date()) {
     // Retrieves a DateTime object that starts at the beginning of the current month
-    return new Date(date.getFullYear(), date.getMonth(), 1, 1)
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0))
 }
 
-export function getStartDateOfNextMonth(date = new Date()) {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 1, 1)
+export function getUTCStartDateOfNextMonth(date = new Date()) {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1, 0))
+}
+
+export function getUTCStartDateIn2Months(date = new Date()) {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 2, 1, 0))
+}
+
+export function getUTCurrentWeek(date = new Date()) {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - date.getUTCDay() + 1))
+}
+
+export function getUTCNextWeek(date = new Date()) {
+
+    // TODO this needs to be fully
+
+    let dateYear = date.getUTCFullYear();
+    let dateMonth = date.getUTCMonth()
+    let dateDay = (date.getUTCDate() + (7 - date.getUTCDay()) + 1);
+
+    return new Date(Date.UTC(dateYear, dateMonth, dateDay))
 }
 
 
