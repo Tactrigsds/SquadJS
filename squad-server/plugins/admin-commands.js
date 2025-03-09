@@ -377,12 +377,6 @@ export default class AdminCommands extends DiscordBasePlugin {
         this.server.rcon.broadcast(reason);
         break;
 
-      // case '!ban': //THIS IS DEADDDDD CODEEEE - no, it's just not finished...still
-      //   this.server.rcon.warn(
-      //     matched.steamID,
-      //     `${executedCommand} ${matched.name} ${bantime} ${reason}`);
-      //   break;
-
       case '!switchnow':
         if (shorthand) {
           await this.server.rcon.execute(`AdminForceTeamChange ${matched.steamID}`)
@@ -648,10 +642,10 @@ export default class AdminCommands extends DiscordBasePlugin {
     const nextMap = await this.server.rcon.getNextMap()
     const team1 = nextMap.factions.split(" ")[0]
     const team2 = nextMap.factions.split(" ")[1]
-    const newNextFactions = `${team2} ${team1}`
-    const command = `${nextMap.layer} ${newNextFactions}`
+    const swappedFactions = `${team2} ${team1}`
+    const command = `${nextMap.layer} ${swappedFactions}`
     this.verbose(1, `Swapping set factions for the next match.`)
-    this.verbose(1, `Set factions: ${newNextFactions}`)
+    this.verbose(1, `Set factions: ${swappedFactions}`)
     await this.server.rcon.warn(playerInfo.steamID, 'Swapping factions for next map...')
     this.verbose(1, `Swap triggered by admin: ${playerInfo.name}`)
     await this.server.rcon.setNextLayer(command)

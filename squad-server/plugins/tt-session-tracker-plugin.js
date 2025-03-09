@@ -1,11 +1,7 @@
 import {ServerEvents} from "../utils/constants.js";
 import DBLog from "./db-log.js";
 import BasePlugin from "./base-plugin.js";
-
-
-/**
- *
- */
+import {Model} from "sequelize";
 
 
 
@@ -89,10 +85,10 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
             },
         8 * 1000)}
 
-        /** @type {Session[]} */
+        /** @type {PlayerSession[]} */
         this.endedPlayerSessions = []
 
-        /** @type {Map<string, Session>} */
+        /** @type {Map<string, PlayerSession>} */
         this.playerSessions = initializeSessions(this.server.players, new Map())
 
         this.lastUpdate = new Date()
@@ -146,7 +142,7 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
      * // TODO currently buggy, creates a large desync in the actual seeding time to the reported one.
      * Resumes sessions stored in the DB if they were ended recently enough.
      * @param model
-     * @param playerSessions {Map<string, Session>}
+     * @param playerSessions {Map<string, PlayerSession>}
      * @param gracePeriodSeconds {number} The seconds before a session is considered finished and a new one will be started.
      */
     async resumeSessions(model, playerSessions, gracePeriodSeconds) {
@@ -205,11 +201,10 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
         this.lastUpdate = new Date()
     }
 
-    isCurrentlySeeding() {
-        const seedingRegex = /.*seed|.*jensen/i
+    isCurrentlySeeding(mapRegExp = /.*seed|.*jensen/i) {
 
         if (!this.server.currentMapData) return false
-        if (!seedingRegex.test(this.server.currentMapData.layer)) return false
+        if (!mapRegExp.test(this.server.currentMapData.layer)) return false
 
         const pCount = this.server.playerCount
 
@@ -249,7 +244,7 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
     }
 
     /**
-     * @param session {Session}
+     * @param session {PlayerSession}
      */
     async debugSendSessionDataToPlayer(session) {
         let msg = `Session tracker debug: \n\n`
@@ -260,8 +255,8 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
 
     /**
      * Utility function to create or update a session to the DB.
-     * @param model {ModelCtor<Model>} Database model/schema.
-     * @param session {Session}
+     * @param model {Model} Database model/schema.
+     * @param session {PlayerSession}
      */
     async uploadSession(model, session) {
         await model.upsert(
@@ -279,11 +274,11 @@ export default class TTSessionTrackerPlugin extends BasePlugin {
  * Initializes player sessions if they don't exist, i.e. when someone has joined the server.
  *
  * @param playersInServer {Player[]} The players currently in the server
- * @param sessions {Map<string, Session>} The currently set sessions
- * @return {Map<string, Session>} A map of sessions
+ * @param sessions {Map<string, PlayerSession>} The currently set sessions
+ * @return {Map<string, PlayerSession>} A map of sessions
  */
 export function initializeSessions(playersInServer, sessions) {
-    /** @type {Map<string, Session>} */
+    /** @type {Map<string, PlayerSession>} */
     const newSessions= structuredClone(sessions)
 
     const date = new Date()
@@ -305,9 +300,9 @@ export function initializeSessions(playersInServer, sessions) {
  *  Updates the sessionEnd field, and removes players no longer in the server from the session map.
  *
  * @param playersInServer {Player[]} Players currently in the server
- * @param sessions {Map<string, Session>} Current sessions
- * @param endedSessions {Session[]} Array of sessions already ended
- * @return {Map<string, Session>} Updated sessions
+ * @param sessions {Map<string, PlayerSession>} Current sessions
+ * @param endedSessions {PlayerSession[]} Array of sessions already ended
+ * @return {Map<string, PlayerSession>} Updated sessions
  */
 export function updateSessions(playersInServer, sessions, endedSessions) {
     const currentTime = new Date()
@@ -333,7 +328,7 @@ export function updateSessions(playersInServer, sessions, endedSessions) {
 /**
  * @param lastUpdateTime {Date}
  * @param currentTime {Date}
- * @param sessions {Map<string, Session>}
+ * @param sessions {Map<string, PlayerSession>}
  */
 export function updateSeedingTimes(lastUpdateTime, currentTime, sessions) {
     const tDelta = currentTime - lastUpdateTime
@@ -342,6 +337,23 @@ export function updateSeedingTimes(lastUpdateTime, currentTime, sessions) {
     for (const session of sessions.values()) {
         session.seedingTimeSeconds += tDeltaSeconds
     }
+    return sessions
+}
+
+
+/**
+ * @param lastUpdateTime {Date}
+ * @param currentTime {Date}
+ * @param sessions {Map<string, PlayerSession>}
+ */
+export function updateSquadLeadingTimes(lastUpdateTime, currentTime, sessions) {
+    const tDelta = currentTime - lastUpdateTime
+    const tDeltaSeconds = tDelta / 1000
+
+    for (const session of sessions.values()) {
+        session.squadLeaderTimeSeconds += tDeltaSeconds
+    }
+
     return sessions
 }
 

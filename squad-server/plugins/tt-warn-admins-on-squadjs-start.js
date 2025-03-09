@@ -1,10 +1,8 @@
 import BasePlugin from './base-plugin.js';
 
-export default class WarnAdminsOnSquadStart extends BasePlugin {
+export default class TTWarnAdminsOnSquadjsStart extends BasePlugin {
     static get description() {
-        return (
-            "Plugin that warns admins when the server has been restarted."
-        );
+        return "The<code>TT Warn Admins On SquadJS Start</code> warns admins whenever SquadJS starts up."
     }
     static get defaultEnabled() {
         return true;
@@ -19,7 +17,7 @@ export default class WarnAdminsOnSquadStart extends BasePlugin {
     }
 
     async mount() {
-        this.server.warnAllAdmins(`AUTOMATIC WARNING TO ADMINS: \nSquadJS has been restarted.`)
+        await this.server.warnAllAdmins(`AUTOMATIC WARNING TO ADMINS: \nSquadJS has been restarted.`)
     }
 
     async unmount() {}

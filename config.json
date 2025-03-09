@@ -6,6 +6,7 @@
     "rconPort": 21114,
     "rconPassword": "password",
     "logReaderMode": "tail",
+    "debugMode": false,
     "logDir": "C:/path/to/squad/log/folder",
     "ftp": {
       "port": 21,

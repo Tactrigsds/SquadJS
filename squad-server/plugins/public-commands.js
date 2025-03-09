@@ -2,13 +2,13 @@
 import BasePlugin from "./base-plugin.js";
 import {sleep, getFactionsAndSubfactions} from "../utils/utils.js";
 
-import {eventsEnum, WARN_MESSAGE_PERSISTENCE_TIME_MS} from "../utils/constants.js";
+import {ServerEvents, WARN_MESSAGE_PERSISTENCE_TIME_MS} from "../utils/constants.js";
 
 export default class PublicCommands extends BasePlugin {
   static get description() {
     return (
-        "Plugin for commands that every player will be able to use."
-    );
+        "<code>Public Commands</code>Plugin for commands that are available to all players."
+      );
   }
 
   static get defaultEnabled() {
@@ -38,7 +38,7 @@ export default class PublicCommands extends BasePlugin {
   }
 
   async mount() {
-    this.server.on(eventsEnum.chatMessage, this.showNextMapCommand)
+    this.server.on(ServerEvents.chatMessage, this.showNextMapCommand)
   }
 
   async unmount() {
