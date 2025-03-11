@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 
-export class Logger {
+class Logger {
   constructor() {
     this.verboseness = {};
     this.colors = {};
@@ -22,10 +22,6 @@ export class Logger {
 
   setVerboseness(module, verboseness) {
     this.verboseness[module] = verboseness;
-  }
-
-  getVerbosity() {
-    return this.verboseness
   }
 
   setColor(module, color) {

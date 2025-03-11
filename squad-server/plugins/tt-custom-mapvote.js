@@ -4,15 +4,15 @@ import {defaultMapList, factionMap, subfactionAbbreviations} from '../utils/fact
 import axios from "axios";
 import path from "path";
 import Logger from 'core/logger';
-import {delay, getLayerListLogPath, eventsEnum } from "../utils/utils.js";
+import {sleep, getLayerListLogPath } from "../utils/utils.js";
+
+import {ServerEvents, WARN_MESSAGE_PERSISTENCE_TIME_MS} from "../utils/constants.js";
 
 
 export default class TTCustomMapVote extends DiscordBasePlugin {
     static get description() {
         return (
-            '<code>' +
-            'TT Custom Vote</code> Plugin that pulls a list of curated layers, factions and subfactions into a pool that admins can access in game and launch map votes with.' +
-            ''
+            '<code>TT Custom Vote</code> Plugin that pulls a list of curated layers, factions and subfactions into a pool that admins can access in game and launch map votes with'
         )
     }
 
@@ -264,6 +264,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.onDatabaseUpdated = this.onDatabaseUpdated.bind(this)
         this.retrieveAndProcessRecentMatches = this.retrieveAndProcessRecentMatches.bind(this)
         this.parsePoolParameters = this.parsePoolParameters.bind(this)
+        this.autoSetFunctor = this.autoSetFunctor.bind(this)
 
         this.mapvote = false;
         this.voteInProgress = false;
@@ -290,9 +291,9 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
     async mount() {
         this.verbose(2, 'Mounted');
-        this.server.on(eventsEnum.chatMessage, this.onChatMessage);
-        this.server.on(eventsEnum.newGame, this.onNewGame);
-        this.server.on(eventsEnum.databaseUpdated, this.onDatabaseUpdated)
+        this.server.on(ServerEvents.chatMessage, this.onChatMessage);
+        this.server.on(ServerEvents.newGame, this.onNewGame);
+        this.server.on(ServerEvents.databaseUpdated, this.onDatabaseUpdated)
         this.mapPoolSize = this.options.votingPoolSize
         this.regularLayerList = []
         this.server.autoSetLayerOnRoundStart = this.options.autoSetLayerOnRoundStart.enabled
@@ -336,8 +337,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         // Remove globally banned layers and maps.
         this.verbose(1, `Removing globally banned layers and maps...`)
         this.verbose(2, `Full layer list length before: ${rawLayerList.length}`)
-        console.log(`Globally banned maps: ${this.options.globallyBannedMaps}`)
-        console.log(`Globally banned layers: ${this.options.globallyBannedLayers}`)
+        this.verbose(2, `Globally banned maps: `, this.options.globallyBannedMaps)
+        this.verbose(2, `Globally banned layers: `, this.options.globallyBannedLayers)
         rawLayerList = rawLayerList.filter(layer => !hasSpecificMap(layer, this.options.globallyBannedMaps))
         rawLayerList = rawLayerList.filter(layer => !hasSpecificLayer(layer, this.options.globallyBannedLayers))
         this.verbose(2, `Full layer list length after: ${rawLayerList.length}`)
@@ -396,7 +397,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.layerListLogFile = getLayerListLogPath(this.options.layerListLogFolder)
             initializeLogFolder(this.options.layerListLogFolder)
             this.initializeLogFile(this.layerListLogFile)
-            deleteOldFiles(this.options.layerListLogFolder)
+            deleteOldLogFiles(this.options.layerListLogFolder)
+            this.verbose(2, `Deleted old layerlist log files.`)
         } catch (err) {
             this.verbose(1, `Something went wrong when initializing layer list logging`)
             console.log(err)
@@ -429,27 +431,31 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             mapPoolVoteTie: false
         }
 
-        if (this.server.rotationEnabled) return
+        if(this.server.autoRotationEnabled || !this.server.autoSetLayerOnRoundStart) {
+            return
+        }
 
         // Don't autoset if we're on jensens or a seeding map.
-        if (this.server.autoSetLayerOnRoundStart) {
-            if (this.server.currentMap.layer.includes('JensensRange')
-                // || this.server.currentMap.layer.includes('Seed'))
-            ) {
-                return
-            }
+        if (this.server.currentMap.layer.includes('JensensRange')
+            // || this.server.currentMap.layer.includes('Seed'))
+        ) {
+            return
         }
         // TODO change to use a different variable, perhaps something like "autosetMap", which the nextlayerset plugin can use
         // To then change the "this.server.nexltayerset" variable once the map set is detected.
         setTimeout(async () => {
-            const tempOptions = await this.parsePoolParameters([], null, false)
-            const tempPool = await this.generatePoolFromParameters(this.safeLayerList, [], tempOptions);
-            this.server.warnAllAdmins('SquadJS: Setting random pick from map pool as a fallback.')
-            await this.setPoolPickOnRoundStart(tempPool)
-            setTimeout(() => {
-                this.server.nextLayerSet = false
-            }, 10 * 1000)
+            await this.autoSetFunctor()
         }, this.options.autoSetLayerOnRoundStart.delayInSeconds * 1000)
+    }
+
+    async autoSetFunctor() {
+        const tempOptions = await this.parsePoolParameters([], null, false)
+        const tempPool = await this.generatePoolFromParameters(this.safeLayerList, [], tempOptions);
+        await this.server.warnAllAdmins('SquadJS: Setting random pick from map pool as a fallback.')
+        await this.setPoolPickOnRoundStart(tempPool)
+        setTimeout(() => {
+            this.server.nextLayerSet = false
+        }, 10 * 1000)
     }
 
     async onDatabaseUpdated() {
@@ -482,7 +488,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
      * @param currentPool
      * @param messages
      * @param playerInfo
-     * @param sliceFirstParameter
+     * @param sliceFirstParameter {boolean}
      * @returns {Promise<*[]>}
      */
     async generatePoolMain(currentPool = [], messages = [], playerInfo = null, sliceFirstParameter = false) {
@@ -756,23 +762,19 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
     /**
      * Handles the chat message event. Handles regular players votes, in addition to adminName users pool generation,
      * read pool and vote start commands.
-     * @param info Info about the message event, including the message content, player name, steamid.
+     * @param info {ChatMessageEvent} Info about the message event, including the message content, player name, steamid.
      * @returns {Promise<void>}
      */
     async onChatMessage(info) {
-        // eslint-disable-next-line no-unused-vars
-        const adminChat = 'ChatAdmin';
-        // eslint-disable-next-line no-unused-vars
         const commands = [];
         this.info = info;
 
         await this.handleVoteMessages(info)
 
-        const playerInfo = await this.server.getPlayerBySteamID(info.steamID);
+        if (this.options.ignoreChats.includes(info.chat)) return;
+
         const splitMessage = info.message.toLowerCase().split(' ');
         const message = info.message.toLowerCase();
-
-        if (this.options.ignoreChats.includes(info.chat)) return;
 
         /*
         Chat commands, admin only.
@@ -780,7 +782,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         if (this.options.generatePoolCommands.includes(splitMessage[0])) {
             if (this.mapVoteRunning) {
                 await this.server.rcon.warn(
-                    playerInfo.steamID,
+                    info.steamID,
                     'Cannot generate a new pool while a mapvote is running.'
                 );
                 return;
@@ -793,7 +795,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
             if (timeSinceLastPoolGen < this.options.generatePoolFrequencyLimitSeconds * 1000) {
                 await this.server.rcon.warn(
-                    playerInfo.steamID,
+                    info.steamID,
                     `Pool was regenerated too recently. Please wait ${Math.abs(
                         Math.round((this.options.generatePoolFrequencyLimitSeconds * 1000 - timeSinceLastPoolGen) / 1000)
                     )} seconds before re-rolling it again`
@@ -804,22 +806,21 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.poolGenerationTime = currentTime;
 
             try {
-                this.mapPool = await this.generatePoolMain([], splitMessage, playerInfo, true);
+                this.mapPool = await this.generatePoolMain([], splitMessage, info, true);
             } catch (err) {
-                await this.server.rcon.warn(playerInfo.steamID, 'Something went wrong when generating pool');
-                this.verbose(1, 'Error occured when sending pool.');
-                this.verbose(1, err);
+                await this.server.rcon.warn(info.steamID, 'Something went wrong when generating pool');
+                this.verbose(1, 'Error occured when sending pool.', err);
             }
-            this.verbose(2, 'Map pool generated, triggered by admin: ' + playerInfo.name);
-            const message = `Newly generated map pool, triggered by: ${playerInfo.name}`;
-            await this.sendCurrentPool(playerInfo, message);
-            this.adminTriggeringPoolGen = { admin: playerInfo.name, steamID: playerInfo.steamID}
+            this.verbose(2, 'Map pool generated, triggered by admin: ', info.player.name);
+            const message = `Newly generated map pool, triggered by: ${info.player.name}`;
+            await this.sendCurrentPool(info, message);
+            this.adminTriggeringPoolGen = { admin: info.player.name, steamID: info.player.steamID}
         }
 
         else if (this.options.startVoteCommands.includes(splitMessage[0])) {
             if (this.mapVoteRunning) {
                 await this.server.rcon.warn(
-                    playerInfo.steamID,
+                    info.player.steamID,
                     'Mapvote already running. End the old one before starting a new one.'
                 );
                 return;
@@ -834,7 +835,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         else if (message === this.options.setNextFromWinnerCommand) {
             if (!this.mapVoteWinner) {
                 await this.server.rcon.warn(
-                    playerInfo.steamID,
+                    info.player.steamID,
                     'Unable to set next map. No map vote winner is saved.'
                 );
                 return;
@@ -842,7 +843,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             const command = assembleSetNextRCONCommandFromLayerObject(this.mapVoteWinner);
             await this.server.rcon.setNextLayer(command);
             await this.server.rcon.warn(
-                playerInfo.steamID,
+                info.player.steamID,
                 'The winner of the vote has been set: \n' + `${this.mapVoteWinner.level}`
             );
         }
@@ -862,7 +863,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
             message += `\n`
             message += `Generation time: ${hour}:${minute} EST`
-            await this.sendCurrentPool(playerInfo, message);
+            await this.sendCurrentPool(info.player, message);
         }
 
         // Set next from a pick in the pool, given an index in the pool.
@@ -870,26 +871,26 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.verbose(3, 'Set Next Command Triggered');
             if (!(splitMessage.length === 2)) {
                 await this.server.rcon.warn(
-                    playerInfo.steamID,
+                    info.player.steamID,
                     'Invalid amount of parameters to the setnext command.\n' +
                     'The second parameter must be a number corresponding to one of the map pool options.'
                 );
 
             } else if (this.mapPool === null || !this.mapPool.length) {
                 await this.server.rcon.warn(
-                    playerInfo.steamID,
+                    info.player.steamID,
                     'The map pool is currently empty. Regenerate it before attempting to set a map from the pool.'
                 );
             }
 
             else if (!splitMessage[1].match(/^[0-9]+/)) {
-                await this.server.rcon.warn(playerInfo.steamID, 'Invalid type of parameter, must be a number\n'
+                await this.server.rcon.warn(info.player.steamID, 'Invalid type of parameter, must be a number\n'
                 );
             }
 
             else if (parseInt(splitMessage[1].trim()) > this.mapPoolSize || parseInt(splitMessage[1].trim()) < 1) {
                 await this.server.rcon.warn(
-                    playerInfo.steamID,
+                    info.player.steamID,
                     'The given number must be within bounds of the generated map pool, bounds are currently: ' +
                     '1-' +
                     this.mapPoolSize
@@ -900,7 +901,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 const selectedChoice = +splitMessage[1] - 1;
                 const selectedLayer = this.mapPool[selectedChoice];
                 const message = `Setting next map to: ${selectedLayer.layer} - ${selectedLayer.faction1}_${selectedLayer.subfaction1} vs ${selectedLayer.faction2}_${selectedLayer.subfaction2}`;
-                await this.server.rcon.warn(playerInfo.steamID, message);
+                await this.server.rcon.warn(info.player.steamID, message);
                 const command = assembleSetNextRCONCommandFromLayerObject(selectedLayer);
                 await this.server.rcon.setNextLayer(command);
             }
@@ -912,7 +913,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
             this.verbose(3, 'Reroll command triggered.');
             if (this.mapVoteRunning) {
                 await this.server.rcon.warn(
-                    playerInfo.steamID,
+                    info.player.steamID,
                     'Cannot generate a new pool while a mapvote is running.'
                 );
                 return;
@@ -948,13 +949,13 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
 
             // TODO currently the pool with add more of the same maps, if one was used as a parameter. Add handling for this case.
-            this.mapPool = await this.generatePoolMain(poolToKeep, tempParameters, playerInfo)
+            this.mapPool = await this.generatePoolMain(poolToKeep, tempParameters, info.player)
 
-            await this.sendCurrentPool(playerInfo, `Rerolling map pool with previous parameters:`);
+            await this.sendCurrentPool(info.player, `Rerolling map pool with previous parameters:`);
         }
 
         else if (splitMessage[0] === '!runoff') {
-            await this.runoffCommand(playerInfo)
+            await this.runoffCommand(info.player)
         }
 
         // Toggle autoset on or off via a command.
@@ -969,7 +970,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 this.server.autoSetLayerOnRoundStart = !this.server.autoSetLayerOnRoundStart
             }
             const state = this.server.autoSetLayerOnRoundStart ? "on" : "off"
-            await this.server.rcon.warn(playerInfo.steamID, `Autosetting layer on round start has been turned ${state}. Note that this only lasts for the current session of SquadJS, it will reset if SquadJS is restarted.`)
+            await this.server.rcon.warn(info.player.steamID, `Autosetting layer on round start has been turned ${state}. Note that this only lasts for the current session of SquadJS, it will reset if SquadJS is restarted.`)
         }
 
     }
@@ -982,7 +983,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         let options;
 
         if (!this.voteInProgress) {
-            await this.server.rcon.warn
+            await this.server.rcon.warn()
+            return
         }
 
         if (this.tiedVoteFlags.regularVoteTie) {
@@ -1045,10 +1047,9 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         for (let i = 0; i < 3; i++) {
             for (const warnMessage of warnList) {
                 await this.server.rcon.warn(playerInfo.steamID, warnMessage);
+
             }
-            await new Promise((resolve) =>
-                setTimeout(resolve, this.server.warnMessagePersistenceTimeMilliSeconds)
-            );
+            await sleep(WARN_MESSAGE_PERSISTENCE_TIME_MS)
         }
     }
 
@@ -1354,7 +1355,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 currentMapPool.push(...map);
             }
         }
-        console.log(`Filters applied length: ${currentMapPool.length}`)
+        this.verbose(1, `Generated pool length after filters applied: `, currentMapPool.length)
         if (currentMapPool.length >= this.mapPoolSize) {
             return currentMapPool.slice(0, this.mapPoolSize);
         }
@@ -1365,7 +1366,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         }
 
         // The fallback in case we weren't able to generate a pool with the specific map picks or with the global filters.
-        this.verbose(1, `No picks available with earlier filters, reverting to baseline...`)
+        this.verbose(1, `No picks available with earlier filters, reverting to fallback without filters...`)
         this.verbose(1, `Current pool length: ${currentMapPool.length}`)
         const tempLayers = applyFiltersToLayerListFromParameters(allLayers, recentMatches, this.options.minMatchesBeforeDupeMap, true, null, null, null, null, null)
 
@@ -1539,7 +1540,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         if (tie) {
             for (let i = 0; i < 3; i++) {
                 await this.server.warnAllAdmins(`SquadJS: A tie has been detected in the vote.\nPlease use '!runoff' to initiate a new vote with the tied options.`)
-                await delay(this.server.warnMessagePersistenceTimeMilliSeconds)
+                await sleep(this.server.warnMessagePersistenceTimeMilliSeconds)
             }
         }
     }
@@ -1901,7 +1902,7 @@ class RegularPickSlotParameters {
 }
 
 
-function deleteOldFiles(directory) {
+function deleteOldLogFiles(directory) {
     try {
         const files = fs.readdirSync(directory);
 
@@ -1914,7 +1915,6 @@ function deleteOldFiles(directory) {
             };
         });
 
-        // Sort the files by modification time (most recent first)
         fileDetails.sort((a, b) => b.mtime - a.mtime);
 
         const filesToDelete = fileDetails.slice(10);
@@ -1922,7 +1922,6 @@ function deleteOldFiles(directory) {
         filesToDelete.forEach(fileDetail => {
             fs.unlinkSync(fileDetail.file);
         });
-        console.log(`Deleted old log files...`)
 
     } catch (err) {
         console.error('Error while deleting old files:', err);
@@ -2052,6 +2051,11 @@ function filterLayerList(allLayers,
 
     return allLayers
 }
+
+
+/**
+ * @typedef layerListFilters
+ */
 
 
 

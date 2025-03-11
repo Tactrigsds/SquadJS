@@ -1,10 +1,11 @@
 import BasePlugin from './base-plugin.js';
 import fs from "fs";
-import { delay, eventsEnum } from '../utils/utils.js';
+import { sleep } from '../utils/utils.js';
+import {ServerEvents} from "../utils/constants.js";
 
 export default class TTAutoRotation extends BasePlugin {
     static get description() {
-        return ("Plugin used for automatically running set rotations and having fog of war removed at the start of a round.");
+        return "<code>TTAutoRotation</code>Plugin is used for automatically running set rotations and having fog of war removed at the start of a round.";
     }
 
     static get defaultEnabled() {
@@ -74,15 +75,19 @@ export default class TTAutoRotation extends BasePlugin {
     }
 
     async mount() {
-        this.server.on(eventsEnum.databaseUpdated, this.onNewGame)
-        this.server.on(eventsEnum.chatMessage, this.onChatMessage)
+        this.server.on(ServerEvents.databaseUpdated, this.onNewGame)
+        this.server.on(ServerEvents.chatMessage, this.onChatMessage)
 
         this.autoSetLayerOnRoundStartInitialState = this.server.autoSetLayerOnRoundStart
         this.server.autoRotationEnabled = this.options.rotationEnabled
         this.server.autoRemovefogOfWar = this.options.autoRemovefogOfWar
 
+        // if (this.options.autoRotationEnabled) {
+        //     this.server.autoSetLayerOnRoundStart = false
+        // }
+
         // If the autorotation is enabled, we want to disable tt-custom-mapvotes autoset, to avoid double sets.
-        this.server.autoSetLayerOnRoundStart = !this.options.autoRotationEnabled
+        // this.server.autoSetLayerOnRoundStart =
         this.rotation = await this.loadRotation()
 
         try {
@@ -96,7 +101,7 @@ export default class TTAutoRotation extends BasePlugin {
             console.error(e)
         }
 
-        await delay(500)
+        await sleep(500)
     }
 
     async unmount() {
@@ -106,7 +111,11 @@ export default class TTAutoRotation extends BasePlugin {
 
 
     async onNewGame() {
-        await delay(2000)
+        await sleep(2000)
+
+        // if (this.options.autoRotationEnabled) {
+        //     this.server.autoSetLayerOnRoundStart = false
+        // }
 
         if (this.server.autoRemovefogOfWar) {
             setTimeout(async () => {
@@ -118,9 +127,13 @@ export default class TTAutoRotation extends BasePlugin {
         }
     }
 
-    async onChatMessage(info) {
-        const pMessages = info.message.toLowerCase().split(" ")
-        if (info.chat !== 'ChatAdmin') return
+    /**
+     * @param messageEvent {ChatMessageEvent}
+     * @return {Promise<void>}
+     */
+    async onChatMessage(messageEvent) {
+        const pMessages = messageEvent.message.toLowerCase().split(" ")
+        // if (messageEvent.chat !== 'ChatAdmin') return
 
         // const commands = [
         //     {inGameCommand: `toggle`, action: this.fogOfWarToggle, help: ``},
@@ -129,35 +142,35 @@ export default class TTAutoRotation extends BasePlugin {
 
         if (this.options.autoRemoveFogOfWarCommand.includes(pMessages[0])) {
             if (pMessages[1] === 'toggle') {
-                await this.fogOfWarToggle(info)
+                await this.fogOfWarToggle(messageEvent)
             }
             else if(pMessages[1] === 'status') {
-                await this.sendFogOfWarStatus(info)
+                await this.sendFogOfWarStatus(messageEvent)
             }
             else if (pMessages[1] === 'save') {
-                await this.saveFogOfWarState(info)
+                await this.saveFogOfWarState(messageEvent)
             }
         }
         else if (this.options.rotationCommand.includes(pMessages[0])) {
             switch (pMessages[1]) {
                 case `toggle`: {
-                    await this.toggleAutoRotation(info)
+                    await this.toggleAutoRotation(messageEvent)
                     break;
                 }
                 case `status`: {
-                    await this.sendAutoRotationStatus(info)
+                    await this.sendAutoRotationStatus(messageEvent)
                     break
                 }
                 case `save`: {
-                    await this.saveAutoRotationState(info)
+                    await this.saveAutoRotationState(messageEvent)
                     break
                 }
                 case `reload`: {
-                    await this.reloadRotationCommand(info)
+                    await this.reloadRotationCommand(messageEvent)
                     break
                 }
                 case `send`: {
-                    await this.sendRotationToAdmin(info)
+                    await this.sendRotationToAdmin(messageEvent)
                     break;
                 }
                 default: break
@@ -215,7 +228,7 @@ export default class TTAutoRotation extends BasePlugin {
             for (const msg of messages) {
                 await this.server.rcon.warn(info.steamID, msg)
             }
-            await delay(this.server.warnMessagePersistenceTimeMilliSeconds)
+            await sleep(this.server.warnMessagePersistenceTimeMilliSeconds)
         }
     }
 
@@ -267,14 +280,14 @@ export default class TTAutoRotation extends BasePlugin {
             this.autoRotationPluginConfig.rotationEnabled = this.server.autoRotationEnabled
             try {
                 await this.saveConfigFile(this.configData, this.configFilePath)
-                await this.server.rcon.warn(info.steamID, `Succesfully saved autorotation state to config file. Note that this saves the current state permanent, and will persist should SquadJS get restarted.`)
+                await this.server.rcon.warn(info.steamID, `Successfully saved autorotation state to config file. Note that this saves the current state permanently, and will persist should SquadJS get restarted.`)
             } catch (e) {
                 this.verbose(`Unable to save config file. Error: `)
                 console.log(e)
             }
 
         } else {
-            await this.server.rcon.warn(info.steamID, `Config data was improperly loaded by the plugin. Not able to save updated parameters.`)
+            await this.server.rcon.warn(info.steamID, `Config data was improperly loaded by the plugin. SquadJS is unable to save updated parameters.`)
         }
     }
 
@@ -303,7 +316,6 @@ export default class TTAutoRotation extends BasePlugin {
     }
 
     async setNextLayerInRotation() {
-        this.server.autoSetLayerOnRoundStart = false
         const matchHistory = this.server.getMatchHistoryFromDB()
         let nextRotationPick;
         for (const layer of this.rotation) {

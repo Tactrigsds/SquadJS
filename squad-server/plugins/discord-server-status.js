@@ -1,7 +1,5 @@
 import tinygradient from 'tinygradient';
 
-import { COPYRIGHT_MESSAGE } from '../utils/constants.js';
-
 import DiscordBaseMessageUpdater from './discord-base-message-updater.js';
 
 export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
@@ -85,7 +83,7 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
     );
 
     // TODO need to change this so it can handle the next layer not being set.
-    const embedobj = {
+    const statusEmbed = {
       title: this.server.serverName,
       fields: [
         {
@@ -133,7 +131,7 @@ export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
       }
     };
 
-    return { embeds: [embedobj] };
+    return { embeds: [statusEmbed] };
   }
 
   async updateStatus() {

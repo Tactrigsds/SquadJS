@@ -1,9 +1,10 @@
-interface RawMapData {
+
+
+export type RawMapData = {
     level: string,
     layer: string,
     factions: string
 }
-
 
 export type MapData = {
     level: string
@@ -14,19 +15,21 @@ export type MapData = {
     subfaction2: string | null
 }
 
-
-interface PlayerSession {
+export type Session = {
     steamID: string,
     sessionStart: Date,
     sessionEnd?: Date,
     seedingTimeSeconds: number
-    squadLeaderTimeSeconds?: number
 }
 
-
-interface SessionWithName extends PlayerSession {
+export type SessionWithName = {
+    steamID: string,
     playerName: string,
+    sessionStart: Date,
+    sessionEnd?: Date,
+    seedingTimeSeconds: number
 }
+
 
 
 export interface TotalSeedingTime {
@@ -41,16 +44,10 @@ export interface TotalSeedingTimeWithDays extends TotalSeedingTime {
 
 
 export type DBPlayer = {
-    id: string
     steamID: string,
-    eosID: ?string
     lastName: string
-    lastIP: ?string
 }
 
-/**
- * Represents a match as it is stored in the database.
- */
 export type DBMatch = {
     id: number,
     dlc: string,
@@ -75,6 +72,8 @@ export type DBMatch = {
     isDraw: ?boolean
     server: number
 }
+
+
 
 
 /**
@@ -110,39 +109,6 @@ export type DiscordMessageEvent = {
 
 }
 
-
-interface PeriodType {
-    type: "month" | "bimonthly" | "weekly"
-}
-
-
-interface PeriodData {
-    periodStart: Date,
-    periodEnd: Date,
-    periodType: "month" | "bimonthly" | "weekly",
-    sendNoEarlierThan: Date
-    broadcastSent: boolean
-    leaderBoardDataSaved: boolean
-}
-
-
-interface LeaderboardData {
-    steamID: string,
-    periodStart: Date,
-    periodEnd: Date,
-    seedingTime: number,
-    squadLeadTime: number,
-    leaderboardType: string,
-    discordRoleApplied: "APPLIED" | "NOT APPLIED" | "UNKNOWN ACCOUNT"
-}
-
-
-export interface DiscordGuildUser {
-}
-
-export interface GuildUser {
-
-}
 export interface PluginOption {
     required: boolean,
     description: string
@@ -151,7 +117,7 @@ export interface PluginOption {
 }
 
 /**
- * An in-game player as represented by SquadJS.
+ * Represents an in-game player.
  */
 export interface Player {
     playerID: number,
@@ -206,30 +172,8 @@ export interface LayerDataV1 {
     subfaction2: string
 }
 
-export interface LayerDataV2 extends LayerDataV1 {
+export interface LayerDataV2 {
 
 }
 
-interface InitialLayerlistFilterOptions {
-    // TODO make this more specific
-    rawLayerList: LayerDataV1[] | object[]
-    logger?: object,
-    listName: string,
-    balanceDifferential: number,
-    asymmetryDifferential: number,
-    gameMode: "RAAS" | "AAS" | "TC" | "Skirmish" | "Seed" | "Invasion" | "Insurgency" | "Destruction"
-    bannedMaps?: string[]
-    bannedLayers?: string[]
-    bannedFactions?: string[]
-    bannedGlobalSubfactions?: string[]
-    removeLargeLayersWithLowTransportScore?: transportScoreOption
-}
 
-
-
-
-
-interface transportScoreOption {
-    enabled: boolean,
-    minimumTransportScore: number
-}
