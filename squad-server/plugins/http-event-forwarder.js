@@ -49,9 +49,6 @@ export default class HttpEventForwarder extends BasePlugin {
             headers: {
               Authorization: `Bearer ${connection.bearerToken}`,
               'Content-Type': 'application/json',
-
-              // This exists as a low-tech solution to prevent most replay attacks. The server can reject requests that are too far in the past. Probably fine for our purposes, but could be replace with an actual nonce or something.
-              'X-Event-Time': Date.now()
             }
           }).then(res => {
             this.verbose(2, `Event ${event} sent to ${connection.name}`);
