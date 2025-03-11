@@ -245,6 +245,18 @@
       "plugin": "TeamRandomizer",
       "enabled": true,
       "command": "randomize"
+    },
+    {
+      "plugin": "HttpEventForwarder",
+      "enabled": false,
+      "connections": [
+        {
+          "name": "SLM Dev",
+          "url": "https://localhost:5173/squadjs/receive",
+          "bearerToken": "dev-token",
+          "events": ["NEW_GAME", "ROUND_ENDED"]
+        }
+      ]
     }
   ],
   "logger": {
