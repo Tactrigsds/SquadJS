@@ -93,7 +93,7 @@ export type ChatMessageEvent = {
  * Represents the data emitted by a discord message event.
  */
 
-export type DiscordMessageEvent = {
+export type DiscordMessageEvent = discordMessageMethods & {
     channelId: string,
     guildId: string,
     id: string,
@@ -101,13 +101,74 @@ export type DiscordMessageEvent = {
     type: number,
     system: boolean,
     content: string,
-    // TODO add user type here
+    author: discordMessageAuthor
     pinned: boolean,
     tts: boolean,
     nonce: string,
     embeds: any[],
     components: any[],
+    attachments: any[],
+    stickers: any[],
+    position: any | null,
+    roleSubscriptionData: any | null
+    resolved: null
+    editedTimestamp: any | null
+    reactions: any
+    mentions: any
+    webhookId: any | null
+    groupActivityApplication: any | null
+    applicationId: any | null
+    activity: any | null
+    flags: any | null
+    reference: any | null
+    interactionMetadata: any | null
+    interaction: any | null
+    poll: any | null
+    call: any | null
+}
 
+export type discordMessageMethods = {
+    awaitMessageComponent: any,
+    delete: () => void
+    edit: (data: string) => void
+    pin: (reason: ?string) => void
+    reply: (data: string) => void
+}
+
+export type discordMessageAuthor = {
+    id: string,
+    bot: boolean,
+    system: boolean,
+    flags: any,
+    username: string,
+    globalName: string,
+    discriminator: string,
+    avatar: string | null
+    banner: undefined | null
+    accentColor: undefined | null
+    avatarDecoration: null
+    avatarDecorationData: null
+}
+
+interface altCheckResult {
+    steamIDs: string[]
+    IPs: string[]
+    playerProfiles: [{
+        id: number,
+        eosID: string,
+        steamID: string,
+        lastName: string,
+        lastIP: string
+    }]
+}
+
+interface playerConnectedEvent {
+    raw: string,
+    time: Date,
+    chainID: string,
+    playercontroller: string
+    ip: string,
+    player: Player
 }
 
 

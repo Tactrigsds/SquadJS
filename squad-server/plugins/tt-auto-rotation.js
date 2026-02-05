@@ -82,6 +82,10 @@ export default class TTAutoRotation extends BasePlugin {
         this.server.autoRotationEnabled = this.options.rotationEnabled
         this.server.autoRemovefogOfWar = this.options.autoRemovefogOfWar
 
+        // if (this.options.autoRotationEnabled) {
+        //     this.server.autoSetLayerOnRoundStart = false
+        // }
+
         // If the autorotation is enabled, we want to disable tt-custom-mapvotes autoset, to avoid double sets.
         // this.server.autoSetLayerOnRoundStart =
         this.rotation = await this.loadRotation()
@@ -108,6 +112,10 @@ export default class TTAutoRotation extends BasePlugin {
 
     async onNewGame() {
         await sleep(2000)
+
+        // if (this.options.autoRotationEnabled) {
+        //     this.server.autoSetLayerOnRoundStart = false
+        // }
 
         if (this.server.autoRemovefogOfWar) {
             setTimeout(async () => {
@@ -359,6 +367,7 @@ export default class TTAutoRotation extends BasePlugin {
         let data;
         
         try {
+            // path.realpathSync(this.options.rotationPath)
             const rotationPath = fs.realpathSync(this.options.rotationPath)
             data = fs.readFileSync(rotationPath, 'utf-8');
         }

@@ -186,11 +186,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                 description: 'Maps that are filtered out from all types of layerlists.',
                 default: []
             },
-            globallyBannedSubfactions: {
-                required: false,
-                description: 'Subfaction and faction combinations that are globally banned from all lists.',
-                default: []
-            },
             defaultGameModeWeights: {
                 required: false,
                 description: "The weights/'chance' of a given gamemode appearing in the pool, presupposing that there are valid picks after all filters have been applied.",
@@ -346,8 +341,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
         this.verbose(2, `Globally banned layers: `, this.options.globallyBannedLayers)
         rawLayerList = rawLayerList.filter(layer => !hasSpecificMap(layer, this.options.globallyBannedMaps))
         rawLayerList = rawLayerList.filter(layer => !hasSpecificLayer(layer, this.options.globallyBannedLayers))
-        rawLayerList = rawLayerList.filter(layer => !hasSpecificFactionAndSubfactions(layer, this.options.globallyBannedSubfactions))
-
         this.verbose(2, `Full layer list length after: ${rawLayerList.length}`)
 
         // Initialize the regular layer list.
@@ -478,6 +471,8 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
      * @returns {Promise<void>}
      */
     async setPoolPickOnRoundStart(pool) {
+        // console.log(`AutoSet map pool:`)
+        // console.log(pool)
         const mapPick = this.getRandomArrayElement(pool)
         await this.customVoteLog(layerToStringShortCompact(mapPick), 3)
         if (!mapPick) {this.verbose(1, 'Something went wrong when trying to set the next map on round start.'); return}
@@ -526,7 +521,7 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
      * @param rawData {string} String version of the raw data.
      * @param delimiter {string} The character used to deliminate the rows in the csv files.
      * @param layerListVersion {string} The version of layerlist, used to decide how to parse the CSV file.
-     * @returns Promise<LayerListV3>
+     * @returns {Promise<*[]>}
      */
     async parseCuratedList(rawData, delimiter, layerListVersion){
         const parsedLayers = []
@@ -554,8 +549,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
                         for (let i = 0; i < line.length; i++) {
                             line[i] = line[i].trim();
                         }
-
-                        /** @type {LayerDataV1} */
                         const layer = {
                             level: line[0],
                             layer: line[1],
@@ -585,8 +578,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
                 line = line.split(delimiter).map(line => line.trim())
 
-
-                /** @type {LayerDataV2} */
                 const layer = {
                     level: line[0],
                     layer: line[1],
@@ -622,7 +613,6 @@ export default class TTCustomMapVote extends DiscordBasePlugin {
 
                 line = line.split(delimiter).map(line => line.trim())
 
-                /** @type {LayerDataV3} */
                 const layer = {
                     level: line[0],
                     layer: line[1],

@@ -1,7 +1,6 @@
 import tinygradient from 'tinygradient';
 
 import DiscordBaseMessageUpdater from './discord-base-message-updater.js';
-import {blockQuote, codeBlock} from "discord.js";
 
 export default class DiscordServerStatus extends DiscordBaseMessageUpdater {
   static get description() {

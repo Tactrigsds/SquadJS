@@ -15,7 +15,7 @@ import {ServerEvents} from "../utils/constants.js";
 export default class TTSeedingLeaderboard extends DiscordBaseMessageUpdater {
 
     static get description() {
-        return ("The<code>Seeding Leaderboard Updater</code> creates messages containing the top seeders in a set period. Is designed to work in conjunction with the <code>TTSessionTracker</code> plugin.")
+        return ("The<code>Seeding Leaderboard Updater</code> creates messages container the top seeders in a set period. Is designed to work in conjunction with the <code>TTSessionTracker</code> plugin.")
     }
 
 
@@ -138,16 +138,6 @@ export default class TTSeedingLeaderboard extends DiscordBaseMessageUpdater {
     }
 }
 
-/**
- *
- * @param start {Date}
- * @param end {Date}
- * @param sessionSchema {Model}
- * @param playerSchema {Model}
- * @param matchSchema {Model}
- * @param minSeedingTimeSeconds {number}
- * @return {Promise<{totalSeedingTimes: Map<string, TotalSeedingTime>, timesSeeded: Map<string, number>, totalSeedingTimesWithCount: TotalSeedingTimeWithDays[]}>}
- */
 export async function retrieveAndProcessDataFromPeriod(start, end, sessionSchema, playerSchema, matchSchema, minSeedingTimeSeconds) {
     const sessionArray = await getAllSessionsInPeriod(start, end, sessionSchema, playerSchema)
     const matches = await getAllMatchesInPeriod(matchSchema, start, end)
