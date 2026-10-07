@@ -1,3 +1,5 @@
+import {Model} from "sequelize";
+
 interface RawMapData {
     level: string,
     layer: string,

@@ -396,6 +396,12 @@ export default class AdminCommands extends DiscordBasePlugin {
         break;
 
       case '!switchnext':
+        // switchnext override. comment to restore
+        this.server.rcon.warn(
+          playerInfo.steamID,
+          `!switchnext has been disabled in favour of slm's /switchnext. Please use that command instead(same syntax)`
+        );
+        break;
         if (this.server.switchList.includes(matched.steamID)) {
           this.server.rcon.warn(
             playerInfo.steamID,
