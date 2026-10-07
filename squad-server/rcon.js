@@ -126,7 +126,10 @@ export default class SquadRcon extends Rcon {
         result[lowerID(platform)] = id;
       });
       this.emit('PLAYER_BANNED', result);
+      return;
     }
+
+    Logger.verbose('SquadRcon', 1, `Unmatched server packet: ${decodedPacket.body}`);
   }
 
   async getCurrentMap() {
@@ -149,30 +152,46 @@ export default class SquadRcon extends Rcon {
     };
   }
 
+  // Reads the "Active Players" section of a ListPlayers response. Ported from squad-layer-manager's parseListPlayers:
+  // fields after Name are read by key, so fields the game adds (Party ID, Vehicle) don't stop a row from parsing.
   async getListPlayers() {
     const response = await this.execute('ListPlayers');
 
     const players = [];
 
-    if (!response || response.length < 1) return players;
-
-    for (const line of response.split('\n')) {
-      const match = line.match(
-        /^ID: (?<playerID>\d+) \| Online IDs:([^|]+)\| Name: (?<name>.+) \| Team ID: (?<teamID>\d|N\/A) \| Squad ID: (?<squadID>\d+|N\/A) \| Is Leader: (?<isLeader>True|False) \| Role: (?<role>.+)$/
-      );
-      if (!match) continue;
-
-      const data = match.groups;
-      data.playerID = +data.playerID;
-      data.isLeader = data.isLeader === 'True';
-      data.teamID = data.teamID !== 'N/A' ? +data.teamID : null;
-      data.squadID = data.squadID !== 'N/A' ? +data.squadID : null;
-      iterateIDs(match[2]).forEach((platform, id) => {
-        data[lowerID(platform)] = id;
-      });
-      players.push(data);
+    if (!response || response.length < 1) {
+      this.#logListPlayersDiagnostic(`ListPlayers returned an empty response (${JSON.stringify(response)}).`);
+      return players;
     }
+
+    const unmatchedLines = [];
+    let inActivePlayers = true;
+    for (const line of response.split('\n')) {
+      if (line.startsWith('-----')) {
+        inActivePlayers = line.includes('Active Players');
+        continue;
+      }
+      if (!inActivePlayers || line.trim() === '') continue;
+
+      const player = parseActivePlayerLine(line);
+      if (player) players.push(player);
+      else unmatchedLines.push(line);
+    }
+
+    if (unmatchedLines.length > 0)
+      this.#logListPlayersDiagnostic(
+        `ListPlayers: ${unmatchedLines.length} player line(s) did not match the expected format. First: ${unmatchedLines[0]}`
+      );
+    else this.lastListPlayersDiagnostic = null;
+
     return players;
+  }
+
+  // Logs a ListPlayers parse problem, only when it differs from the last one logged, since the list is polled every 30s.
+  #logListPlayersDiagnostic(message) {
+    if (message === this.lastListPlayersDiagnostic) return;
+    this.lastListPlayersDiagnostic = message;
+    Logger.verbose('SquadRcon', 1, message);
   }
 
   async getSquads() {
@@ -232,4 +251,53 @@ export default class SquadRcon extends Rcon {
   async setNextLayer(command) {
     await this.execute(`AdminSetNextLayer ${command}`)
   }
+}
+
+const LIST_PLAYERS_KEYS_AFTER_NAME = ['Team ID', 'Party ID', 'Squad ID', 'Is Leader', 'Role'];
+
+function parseActivePlayerLine(line) {
+  const head = line.match(/^ID: (\d+) \| Online IDs:([^|]+)\| Name: (.*)$/);
+  if (!head) return null;
+  const rest = head[3];
+
+  // a name can contain " | ", so it ends at the first separator followed by a key known to come after it
+  let nameEnd = -1;
+  for (const key of LIST_PLAYERS_KEYS_AFTER_NAME) {
+    const idx = rest.indexOf(` | ${key}: `);
+    if (idx !== -1 && (nameEnd === -1 || idx < nameEnd)) nameEnd = idx;
+  }
+  if (nameEnd === -1) return null;
+
+  const fields = new Map();
+  for (const segment of rest.slice(nameEnd + 3).split(' | ')) {
+    const sep = segment.indexOf(': ');
+    if (sep === -1) continue;
+    fields.set(segment.slice(0, sep), segment.slice(sep + 2));
+  }
+
+  const teamID = fields.get('Team ID');
+  const squadID = fields.get('Squad ID');
+  const isLeader = fields.get('Is Leader');
+  const role = fields.get('Role');
+  const partyID = fields.get('Party ID');
+  const vehicle = fields.get('Vehicle');
+  if (teamID === undefined || !/^(\d|N\/A)$/.test(teamID)) return null;
+  if (squadID === undefined || !/^(\d+|N\/A)$/.test(squadID)) return null;
+  if (isLeader !== 'True' && isLeader !== 'False') return null;
+  if (!role) return null;
+
+  const data = {
+    playerID: +head[1],
+    name: rest.slice(0, nameEnd),
+    teamID: teamID === 'N/A' ? null : +teamID,
+    squadID: squadID === 'N/A' ? null : +squadID,
+    isLeader: isLeader === 'True',
+    role,
+    partyID: partyID === undefined || partyID === 'N/A' ? null : partyID,
+    vehicle: vehicle === undefined || vehicle === 'N/A' ? null : vehicle
+  };
+  iterateIDs(head[2]).forEach((platform, id) => {
+    data[lowerID(platform)] = id;
+  });
+  return data;
 }

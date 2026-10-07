@@ -45,6 +45,12 @@ export default class DiscordChat extends DiscordBasePlugin {
 
   async mount() {
     this.server.on('CHAT_MESSAGE', this.onChatMessage);
+    this.verbose(
+      1,
+      `Listening for chat messages. Channel ${this.options.channelID} ${
+        this.channel ? 'ready' : 'NOT initialized'
+      }, ignoring: ${JSON.stringify(this.options.ignoreChats)}.`
+    );
   }
 
   async unmount() {
@@ -52,6 +58,7 @@ export default class DiscordChat extends DiscordBasePlugin {
   }
 
   async onChatMessage(info) {
+    this.verbose(2, `Received ${info.chat} message from "${info.name}": ${info.message}`);
     if (this.options.ignoreChats.includes(info.chat)) return;
 
     let color = '';
@@ -65,10 +72,11 @@ export default class DiscordChat extends DiscordBasePlugin {
         color = 'yaml';
         break;
     }
+    // info.player is null when the sender isn't in the player list, fall back to the name from the chat line.
     const message = {
-      content: `\`\`\`${color}\n# T:${info.player.teamID} SQ:${
-        info.player.squadID || 'Unassigned'
-      } ${info.player.name}\n${info.chat}: ${info.message}\n\`\`\``
+      content: `\`\`\`${color}\n# T:${info.player?.teamID ?? '?'} SQ:${
+        info.player?.squadID || 'Unassigned'
+      } ${info.player?.name ?? info.name}\n${info.chat}: ${info.message}\n\`\`\``
     };
     await this.sendDiscordMessage(message);
   }

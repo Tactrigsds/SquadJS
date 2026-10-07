@@ -123,6 +123,12 @@ export default class SquadServer extends EventEmitter {
 
     this.rcon.on('CHAT_MESSAGE', async (data) => {
       data.player = await this.getPlayerByEOSID(data.eosID);
+      if (!data.player)
+        Logger.verbose(
+          'SquadServer',
+          1,
+          `Chat message from "${data.name}" (EOS ID: ${data.eosID}) has no matching player in the player list (${this.players.length} players loaded).`
+        );
       this.emit('CHAT_MESSAGE', data);
 
       const command = data.message.match(/!([^ ]+) ?(.*)/);

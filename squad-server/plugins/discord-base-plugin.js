@@ -17,6 +17,7 @@ export default class DiscordBasePlugin extends BasePlugin {
   async prepareToMount() {
     try {
       this.channel = await this.options.discordClient.channels.fetch(this.options.channelID);
+      this.verbose(1, `Fetched Discord channel "${this.channel?.name}" (${this.options.channelID}).`);
     } catch (error) {
       this.channel = null;
       this.verbose(
@@ -40,6 +41,11 @@ export default class DiscordBasePlugin extends BasePlugin {
       message = { ...message, embeds: [message.embed] };
     }
 
-    await this.channel.send(message);
+    try {
+      await this.channel.send(message);
+    } catch (error) {
+      this.verbose(1, `Failed to send Discord message to channel ${this.options.channelID}. Error: ${error.message}`);
+      this.verbose(2, `${error.stack}`);
+    }
   }
 }
