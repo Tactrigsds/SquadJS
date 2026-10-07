@@ -23,3 +23,6 @@ package-lock.json
 
 # Vendor build, embeds the vendor's GitHub token. Deployed on prod, kept out of git.
 /squad-server/plugins/extended-server-profiler.build.min.js
+
+# Local connection details for scripts/deploy-sftp.sh
+/.deploy.env
