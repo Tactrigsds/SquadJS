@@ -91,7 +91,7 @@ export default class TTRestartCommand extends BasePlugin {
 
     this.verbose(1, `/${this.options.commandName} used by ${user}. Exiting with code ${this.options.exitCode}.`);
     try {
-      await interaction.reply({ content: 'Killing SquadJS, it should come back shortly.', ephemeral: true });
+      await interaction.reply({ content: 'Killing SquadJS, it should come back shortly.' });
     } catch (error) {
       this.verbose(1, `Failed to reply to interaction, exiting anyway. Error: ${error.message}`);
     }
